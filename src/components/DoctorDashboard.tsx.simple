@@ -1,0 +1,182 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { Doctor, Patient, Prescription, Medication, LabResult, AuditLog, AntibioticGuideline, PrescribedMedication, DoctorPerformanceMetrics, Notification } from '../types';
+import { PrescriptionPDFGenerator, DigitalSignature } from '../utils/pdfGenerator';
+import DigitalSignatureCapture from './DigitalSignatureCapture';
+import api from '../api';
+import { 
+  Users, 
+  Pill, 
+  FileText, 
+  TrendingUp, 
+  Search, 
+  Plus, 
+  Calendar,
+  AlertTriangle,
+  BarChart3,
+  LogOut,
+  User,
+  Eye,
+  Edit,
+  Phone,
+  Mail,
+  MapPin,
+  Heart,
+  X,
+  Save,
+  Activity,
+  ClipboardList,
+  Download,
+  PenTool,
+  ShieldCheck,
+  History,
+  FlaskConical,
+  Lightbulb,
+  FileSpreadsheet,
+  Bell,
+  TrendingDown,
+  Award,
+  Loader2,
+  BarChart,
+  LayoutDashboard,
+  XCircle,
+  Send
+} from 'lucide-react';
+import PatientProfile from './PatientProfile';
+import PatientCard from './PatientCard';
+
+interface DashboardData {
+  patients: Patient[];
+  prescriptions: Prescription[];
+  labResults: LabResult[];
+  auditLogs: AuditLog[];
+  guidelines: AntibioticGuideline[];
+  notifications: Notification[];
+  performanceMetrics: DoctorPerformanceMetrics | null;
+  availableMedications: Medication[];
+}
+
+const DoctorDashboard: React.FC = () => {
+  const { user, userProfile, isLoading: authLoading, logout } = useAuth();
+  
+  console.log('DoctorDashboard render:', { user, userProfile, authLoading });
+  
+  // ALL useState hooks MUST come before any conditional returns
+  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'antibiotic-tracking' | 'analytics' | 'audit-log' | 'performance'>('overview');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [showPatientProfileModal, setShowPatientProfileModal] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [medicationQuantities, setMedicationQuantities] = useState<{ [key: string]: number }>({});
+  const [prescriptionForm, setPrescriptionForm] = useState({
+    diagnosis: '',
+    symptoms: '',
+    medications: [] as any[],
+    notes: '',
+    indication: '',
+    route: 'Oral' as 'Oral' | 'IV' | 'IM' | 'Topical',
+    frequency: '',
+    duration: ''
+  });
+  const [prescribedMedications, setPrescribedMedications] = useState<PrescribedMedication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    patients: [],
+    prescriptions: [],
+    labResults: [],
+    auditLogs: [],
+    guidelines: [],
+    notifications: [],
+    performanceMetrics: null,
+    availableMedications: []
+  });
+
+  const doctor = userProfile as Doctor;
+  
+  // NOW we can have conditional returns
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+          <p className="text-lg text-gray-600">Loading authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || !userProfile) {
+    console.error('No user or profile found:', { user, userProfile });
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <AlertTriangle className="w-12 h-12 text-yellow-500" />
+          <p className="text-lg text-gray-600">Unable to load doctor profile.</p>
+          <p className="text-sm text-gray-500">Please try logging in again.</p>
+          <button 
+            onClick={() => window.location.href = '/login/doctor'} 
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Simple dashboard render
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar */}
+      <div className="w-64 bg-gray-800 text-white flex flex-col">
+        <div className="px-6 py-4 border-b border-gray-700">
+          <h2 className="text-xl font-semibold">AMS Dashboard</h2>
+          <p className="text-sm text-gray-400">Dr. {doctor?.name || 'Unknown'}</p>
+        </div>
+        <nav className="flex-1 px-4 py-4 space-y-2">
+          <button onClick={() => setActiveTab('overview')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'overview' ? 'bg-gray-700' : ''}`}>
+            <LayoutDashboard className="mr-3 h-5 w-5" /> Overview
+          </button>
+          <button onClick={() => setActiveTab('patients')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'patients' ? 'bg-gray-700' : ''}`}>
+            <Users className="mr-3 h-5 w-5" /> Patients
+          </button>
+        </nav>
+        <div className="px-6 py-4 border-t border-gray-700">
+          <button onClick={logout} className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">
+            <LogOut className="mr-2 h-4 w-4" /> Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+            <h1 className="text-2xl font-bold text-gray-900">Doctor Dashboard</h1>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto bg-gray-100 p-6">
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4">Welcome, Dr. {doctor?.name || 'Unknown'}!</h2>
+            <p className="text-gray-600">Your dashboard is loading successfully.</p>
+            <div className="mt-4 p-4 bg-blue-50 rounded-md">
+              <p className="text-sm"><strong>User ID:</strong> {user.id}</p>
+              <p className="text-sm"><strong>Email:</strong> {user.email}</p>
+              <p className="text-sm"><strong>Role:</strong> {user.role}</p>
+              <p className="text-sm"><strong>License:</strong> {doctor?.licenseNumber || 'N/A'}</p>
+              <p className="text-sm"><strong>Specialty:</strong> {doctor?.specialty || 'N/A'}</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default DoctorDashboard;

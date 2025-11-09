@@ -1,0 +1,54 @@
+═══════════════════════════════════════════════════════════════
+🚨 YOUR LOGIN IS STUCK - HERE'S THE EXACT FIX
+═══════════════════════════════════════════════════════════════
+
+DO NOT CLOSE VS CODE! That won't help.
+
+THE PROBLEM:
+------------
+Backend server (port 3001) is NOT running.
+That's why you see "Logging in..." forever.
+
+
+THE FIX (3 STEPS):
+------------------
+
+STEP 1: Open NEW Terminal Window
+---------------------------------
+Press: Cmd + T (new terminal tab)
+OR: Click Terminal menu → New Terminal
+
+
+STEP 2: Copy & Paste This Command:
+-----------------------------------
+cd /Users/mrdevsharma/Downloads/EX/healthcare-prototype/server && node index.js
+
+
+STEP 3: Wait for This Message:
+-------------------------------
+✅ MongoDB connected successfully
+🚀 Server running on port 3001
+
+
+THEN:
+-----
+Go back to your browser
+Refresh the page (F5)
+Click "Sign in" again
+Login will work!
+
+
+CREDENTIALS:
+------------
+Email:    doctor@hospital.com
+Password: doctorpass123
+
+
+═══════════════════════════════════════════════════════════════
+
+THAT'S IT! Don't close VS Code, just open a new terminal and run that command!
+
+Your frontend (React) is ALREADY running.
+You just need to start the backend!
+
+═══════════════════════════════════════════════════════════════

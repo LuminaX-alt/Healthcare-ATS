@@ -1,0 +1,24 @@
+═══════════════════════════════════════════════════════════
+🚀 RESTART YOUR APP NOW - COPY-PASTE THIS:
+═══════════════════════════════════════════════════════════
+
+cd /Users/mrdevsharma/Downloads/EX/healthcare-prototype && chmod +x RESTART.sh && ./RESTART.sh
+
+═══════════════════════════════════════════════════════════
+
+OR use your existing script:
+
+chmod +x QUICK-START.sh && ./QUICK-START.sh
+
+═══════════════════════════════════════════════════════════
+
+WHAT THIS DOES:
+1. Stops old processes
+2. Starts backend (port 3001)
+3. Starts frontend (port 3000)
+4. Opens browser after 10 seconds
+
+YOUR APP WORKS EXACTLY AS BEFORE!
+Port 3000 | Same speed | All features working
+
+═══════════════════════════════════════════════════════════

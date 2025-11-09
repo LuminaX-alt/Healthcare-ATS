@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test Alt-X</title></head>
+<body>
+<h1>Open Browser Console (F12) and check for errors</h1>
+<script>
+console.log('Testing Alt-X API...');
+fetch('http://localhost:3001/api/lumina-ai-local/query', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({query: 'Hello, can you hear me?'})
+})
+.then(r => r.json())
+.then(d => {
+  console.log('✅ SUCCESS:', d);
+  document.body.innerHTML += '<h2 style="color:green">✅ Alt-X AI is working!</h2><pre>' + JSON.stringify(d, null, 2) + '</pre>';
+})
+.catch(e => {
+  console.error('❌ ERROR:', e);
+  document.body.innerHTML += '<h2 style="color:red">❌ Error: ' + e + '</h2>';
+});
+</script>
+</body>
+</html>

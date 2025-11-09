@@ -1,0 +1,877 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { Doctor, Patient, Prescription, Medication, LabResult, AuditLog, AntibioticGuideline, PrescribedMedication, DoctorPerformanceMetrics, Notification } from '../types';
+import { PrescriptionPDFGenerator, DigitalSignature } from '../utils/pdfGenerator';
+import DigitalSignatureCapture from './DigitalSignatureCapture';
+import api from '../api';
+import { 
+  Users, 
+  Pill, 
+  FileText, 
+  TrendingUp, 
+  Search, 
+  Plus, 
+  Calendar,
+  AlertTriangle,
+  BarChart3,
+  LogOut,
+  User,
+  Eye,
+  Edit,
+  Phone,
+  Mail,
+  MapPin,
+  Heart,
+  X,
+  Save,
+  Activity,
+  ClipboardList,
+  Download,
+  PenTool,
+  ShieldCheck,
+  History,
+  FlaskConical,
+  Lightbulb,
+  FileSpreadsheet,
+  Bell,
+  TrendingDown,
+  Award,
+  Loader2,
+  BarChart,
+  LayoutDashboard,
+  XCircle,
+  Send
+} from 'lucide-react';
+import PatientProfile from './PatientProfile';
+import PatientCard from './PatientCard';
+
+interface DashboardData {
+  patients: Patient[];
+  prescriptions: Prescription[];
+  labResults: LabResult[];
+  auditLogs: AuditLog[];
+  guidelines: AntibioticGuideline[];
+  notifications: Notification[];
+  performanceMetrics: DoctorPerformanceMetrics | null;
+  availableMedications: Medication[];
+}
+
+const DoctorDashboard: React.FC = () => {
+  const { user, userProfile, isLoading: authLoading, logout } = useAuth();
+  
+  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'antibiotic-tracking' | 'analytics' | 'audit-log' | 'performance'>('overview');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [showPatientProfileModal, setShowPatientProfileModal] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [medicationQuantities, setMedicationQuantities] = useState<{ [key: string]: number }>({});
+  const [prescriptionForm, setPrescriptionForm] = useState({
+    diagnosis: '',
+    symptoms: '',
+    medications: [] as any[],
+    notes: '',
+    indication: '',
+    route: 'Oral' as 'Oral' | 'IV' | 'IM' | 'Topical',
+    frequency: '',
+    duration: ''
+  });
+  const [prescribedMedications, setPrescribedMedications] = useState<PrescribedMedication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    patients: [],
+    prescriptions: [],
+    labResults: [],
+    auditLogs: [],
+    guidelines: [],
+    notifications: [],
+    performanceMetrics: null,
+    availableMedications: []
+  });
+
+  const doctor = userProfile as Doctor;
+  
+  // Early return with loading state if auth is still loading
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+          <p className="text-lg text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Early return with error state if no user or profile is found
+  if (!user || !userProfile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <AlertTriangle className="w-12 h-12 text-yellow-500" />
+          <p className="text-lg text-gray-600">Unable to load doctor profile. Please try logging in again.</p>
+          <button 
+            onClick={() => window.location.href = '/login/doctor'} 
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [medicationQuantities, setMedicationQuantities] = useState<{ [key: string]: number }>({});
+  const [prescriptionForm, setPrescriptionForm] = useState({
+    diagnosis: '',
+    symptoms: '',
+    medications: [] as any[],
+    notes: '',
+    indication: '',
+    route: 'Oral' as 'Oral' | 'IV' | 'IM' | 'Topical',
+    frequency: '',
+    duration: ''
+  });
+  const [prescribedMedications, setPrescribedMedications] = useState<PrescribedMedication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    patients: [],
+    prescriptions: [],
+    labResults: [],
+    auditLogs: [],
+    guidelines: [],
+    notifications: [],
+    performanceMetrics: null,
+    availableMedications: []
+  });
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!userProfile || !user) {
+        setLoading(false);
+        return;
+      }
+      
+      const doctorId = (userProfile as Doctor).id;
+      if (!doctorId) {
+        console.error("Doctor ID not found");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const [patientsRes, medicationsRes, prescriptionsRes, auditLogsRes] = await Promise.all([
+          api.get(`/users/patients/${doctorId}`),
+          api.get('/medications'),
+          api.get(`/prescriptions/doctor/${doctorId}`),
+          api.get(`/audit-logs/${doctorId}`)
+        ]);
+
+        setDashboardData({
+          patients: patientsRes.data,
+          availableMedications: medicationsRes.data,
+          prescriptions: prescriptionsRes.data,
+          auditLogs: auditLogsRes.data,
+          // Mock data for now, will be replaced with API calls
+          labResults: [], 
+          guidelines: [],
+          notifications: [],
+          performanceMetrics: null,
+        });
+
+      } catch (error) {
+        console.error("Failed to fetch dashboard data", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [userProfile, user]);
+
+  const { patients, prescriptions, labResults, auditLogs, guidelines, notifications, performanceMetrics, availableMedications } = dashboardData;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+          <p className="text-lg text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Helper functions for prescription creation and PDF generation
+  const handleCreatePrescription = () => {
+    if (!selectedPatient) return;
+    
+    // Validate form
+    if (!prescriptionForm.diagnosis || prescriptionForm.medications.length === 0) {
+      alert('Please fill in diagnosis and add at least one medication');
+      return;
+    }
+
+    setShowSignatureModal(true);
+  };
+
+  const handleSignatureCapture = async (signature: string) => {
+    if (!selectedPatient || !doctor) return;
+
+    setDigitalSignature(signature);
+    setShowSignatureModal(false);
+    setIsGeneratingPDF(true);
+
+    try {
+      // Create prescription object
+      const now = new Date().toISOString();
+      const prescriptionData = {
+        patientId: selectedPatient.id,
+        doctorId: doctor.id,
+        doctorName: doctor.name,
+        medications: prescriptionForm.medications.map((med) => {
+          const startDate = new Date();
+          const endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + parseInt(prescriptionForm.duration || '7'));
+          const reviewDate = new Date(startDate);
+          reviewDate.setDate(startDate.getDate() + 3);
+
+          return {
+            medicationId: med.medicationId,
+            dosage: med.dosage,
+            frequency: prescriptionForm.frequency,
+            duration: prescriptionForm.duration,
+            quantity: med.quantity,
+            indication: prescriptionForm.indication,
+            route: prescriptionForm.route,
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            reviewDate: reviewDate.toISOString(),
+            isAntibiotic: med.isAntibiotic,
+          };
+        }),
+        diagnosis: prescriptionForm.diagnosis,
+        symptoms: prescriptionForm.symptoms.split(',').map(s => s.trim()),
+        notes: prescriptionForm.notes,
+        status: 'pending'
+      };
+
+      const response = await api.post('/prescriptions', prescriptionData);
+      const newPrescription = response.data;
+
+      await addAuditLog('CREATE', 'PRESCRIPTION', newPrescription.id, `Created new prescription for ${selectedPatient.name}`);
+
+      // Create digital signature object
+      const digitalSig: DigitalSignature = {
+        doctorName: doctor.name,
+        licenseNumber: doctor.licenseNumber || 'N/A',
+        signatureDate: new Date().toISOString(),
+        digitalCertificate: signature
+      };
+
+      // Generate PDF
+      await PrescriptionPDFGenerator.generatePrescriptionPDF(
+        newPrescription,
+        selectedPatient,
+        doctor,
+        digitalSig
+      );
+
+      // Add medications to patient's cart
+      try {
+        await api.post('/patient/cart/add', {
+          patientId: selectedPatient.id,
+          items: newPrescription.medications.map((med: any) => ({
+            medicationId: med.medication,
+            medicationName: med.medicationName, // This might need adjustment based on what the backend sends
+            quantity: med.quantity,
+            price: med.price, // This might need adjustment
+            prescriptionId: newPrescription.id,
+            addedAt: new Date().toISOString()
+          }))
+        });
+      } catch (cartError) {
+        console.error('Failed to add items to cart:', cartError);
+        // Non-fatal, so we just log it
+      }
+
+      // Reset form and close modals
+      setPrescriptionForm({
+        diagnosis: '',
+        symptoms: '',
+        medications: [],
+        notes: '',
+        indication: '',
+        route: 'Oral',
+        frequency: '',
+        duration: ''
+      });
+      setShowPrescriptionModal(false);
+      setDigitalSignature(null);
+
+      alert('Prescription created successfully! PDF has been downloaded and medications added to patient\'s cart.');
+
+    } catch (error) {
+      console.error('Error creating prescription:', error);
+      alert('Failed to create prescription PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const addMedicationToPrescription = (medication: Medication, quantity: number) => {
+    if (quantity <= 0) return;
+
+    const prescriptionMed = {
+      medicationId: medication.id,
+      medicationName: medication.name,
+      dosage: medication.dosage,
+      quantity: quantity,
+      instructions: `Take as prescribed by doctor`,
+      isAntibiotic: medication.type === 'antibiotic'
+    };
+
+    setPrescriptionForm(prev => ({
+      ...prev,
+      medications: [...prev.medications, prescriptionMed]
+    }));
+  };
+
+  const removeMedicationFromPrescription = (medicationId: string) => {
+    setPrescriptionForm(prev => ({
+      ...prev,
+      medications: prev.medications.filter(med => med.medicationId !== medicationId)
+    }));
+  };
+
+  const handlePrescribe = (patientId: string, medication: Medication) => {
+    const prescribedMedication: Omit<PrescribedMedication, 'id'> = {
+      patient: patients.find(p => p.id === patientId)!,
+      medication: medication,
+      dosage: '10mg', // Default or from a form
+      frequency: 'Once a day', // Default or from a form
+      duration: '7 days', // Default or from a form
+      quantity: 1,
+      prescriptionDate: new Date().toISOString(),
+      dispensed: false,
+      startDate: new Date().toISOString(),
+      endDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString(),
+    };
+    setPrescribedMedications(prev => [...prev, { ...prescribedMedication, id: `pm_${prev.length + 1}` }]);
+  };
+
+  const handleStopMedication = async (prescriptionId: string, medicationId: string) => {
+    setDashboardData(prev => ({
+      ...prev,
+      prescriptions: prev.prescriptions.map(p => {
+        if (p.id === prescriptionId) {
+          const newMedications = p.medications.map(m => {
+            if (m.id === medicationId) {
+              return { ...m, status: 'stopped' as 'stopped' };
+            }
+            return m;
+          });
+          return { ...p, medications: newMedications, modifiedAt: new Date().toISOString() };
+        }
+        return p;
+      })
+    }));
+    // Also add to audit log
+    const patient = patients.find(p => p.id === prescriptions.find(pr => pr.id === prescriptionId)?.patientId);
+    const medication = availableMedications.find(m => m.id === medicationId);
+    await addAuditLog('STOP', 'ANTIBIOTIC', medicationId, `Stopped ${medication?.name} for ${patient?.name}`);
+  };
+
+  const handleReviewMedication = async (prescriptionId: string, medicationId: string) => {
+    setDashboardData(prev => ({
+      ...prev,
+      prescriptions: prev.prescriptions.map(p => {
+        if (p.id === prescriptionId) {
+          const newMedications = p.medications.map(m => {
+            if (m.id === medicationId) {
+              return { ...m, status: 'reviewed' as 'reviewed' };
+            }
+            return m;
+          });
+          return { ...p, medications: newMedications, modifiedAt: new Date().toISOString() };
+        }
+        return p;
+      })
+    }));
+    const patient = patients.find(p => p.id === prescriptions.find(pr => pr.id === prescriptionId)?.patientId);
+    const medication = availableMedications.find(m => m.id === medicationId);
+    await addAuditLog('REVIEW', 'ANTIBIOTIC', medicationId, `Reviewed ${medication?.name} for ${patient?.name}`);
+  };
+
+  const handleDeEscalate = async (prescriptionId: string, medicationId: string, patientId: string) => {
+    const patient = patients.find(p => p.id === patientId);
+    if (!patient) return;
+  
+    const prescription = prescriptions.find(p => p.id === prescriptionId);
+    if (!prescription) return;
+  
+    const medication = prescription.medications.find(m => m.id === medicationId);
+    if (!medication) return;
+  
+    // Pre-fill the prescription modal for de-escalation
+    setPrescriptionForm({
+      diagnosis: prescription.diagnosis,
+      symptoms: prescription.symptoms.join(', '),
+      medications: [], // Start fresh for de-escalation
+      notes: `De-escalating from ${medication.medication.name}. Original diagnosis: ${prescription.diagnosis}`,
+      indication: medication.indication || '',
+      route: medication.route || 'Oral',
+      frequency: '',
+      duration: ''
+    });
+    setSelectedPatient(patient);
+    setShowPrescriptionModal(true);
+    await addAuditLog('UPDATE', 'ANTIBIOTIC', medicationId, `Initiated de-escalation for ${medication.medication.name} for ${patient.name}`);
+  };
+
+  const suggestAlternative = (currentAntibiotic: string) => {
+    // Mock AI suggestion
+    const alternatives: { [key: string]: string } = {
+      'Amoxicillin': 'Ciprofloxacin (if resistant and appropriate for condition)',
+      'Ciprofloxacin': 'Levofloxacin or consider non-fluoroquinolone options based on culture.',
+      'Azithromycin': 'Doxycycline or a beta-lactam depending on the infection type.'
+    };
+    const suggestion = alternatives[currentAntibiotic] || 'a different class of antibiotic based on sensitivity results.';
+    alert(`AI Suggestion: Consider switching to ${suggestion}`);
+  };
+
+  const handleDownloadPatientSummary = async (patient: Patient) => {
+    setIsGeneratingSummary(true);
+    try {
+      const patientPrescriptions = prescriptions.filter(p => p.patientId === patient.id);
+      await PrescriptionPDFGenerator.generatePatientSummaryPDF(patient, patientPrescriptions, doctor);
+    } catch (error) {
+      console.error('Failed to generate patient summary PDF:', error);
+      alert('There was an error generating the patient summary. Please try again.');
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
+  const addAuditLog = async (action: AuditLog['action'], entity: AuditLog['entity'], entityId: string, details: string) => {
+    try {
+      const newLog = {
+        doctorId: doctor.id,
+        doctorName: doctor.name,
+        action,
+        entity,
+        entityId,
+        details,
+        entryHash: `hash_${Date.now()}` // In a real app, this would be a proper hash
+      };
+      const response = await api.post('/audit-logs', newLog);
+      setDashboardData(prev => ({ ...prev, auditLogs: [response.data, ...prev.auditLogs] }));
+    } catch (error) {
+      console.error('Failed to add audit log:', error);
+    }
+  };
+
+  const exportToCSV = (data: any[], filename: string) => {
+    if (data.length === 0) {
+      alert('No data to export.');
+      return;
+    }
+    const header = Object.keys(data[0]).join(',');
+    const rows = data.map(row => Object.values(row).map(val => `"${String(val).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csvContent = `data:text/csv;charset=utf-8,${header}\n${rows}`;
+    const encodedUri = encodeURI(csvContent);
+    const csvLink = document.createElement('a');
+    csvLink.setAttribute('href', encodedUri);
+    csvLink.setAttribute('download', `${filename}.csv`);
+    document.body.appendChild(csvLink);
+    csvLink.click();
+    document.body.removeChild(csvLink);
+  };
+
+  const handleMarkNotificationAsRead = (id: string) => {
+    setDashboardData(prev => ({ ...prev, notifications: prev.notifications.map(n => n.id === id ? { ...n, read: true } : n) }));
+  };
+
+  const handleDispense = (prescriptionId: string) => {
+    // Implementation for dispensing medication
+  };
+
+  const filteredPatients = patients.filter(p =>
+    p.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+        <p className="ml-4 text-lg">Loading dashboard...</p>
+      </div>
+    );
+  }
+
+  const renderOverview = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Cards for stats */}
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-blue-100 p-3 rounded-full mr-4">
+          <Users className="h-6 w-6 text-blue-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Total Patients</p>
+          <p className="text-2xl font-bold">{patients.length}</p>
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-green-100 p-3 rounded-full mr-4">
+          <Pill className="h-6 w-6 text-green-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Antibiotics Prescribed Today</p>
+          <p className="text-2xl font-bold">{prescriptions.filter(p => new Date(p.createdAt).toDateString() === new Date().toDateString() && p.medications.some(m => m.isAntibiotic)).length}</p>
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-yellow-100 p-3 rounded-full mr-4">
+          <ShieldCheck className="h-6 w-6 text-yellow-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Compliance Rate</p>
+          <p className="text-2xl font-bold">92%</p>
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-red-100 p-3 rounded-full mr-4">
+          <AlertTriangle className="h-6 w-6 text-red-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Resistance Alerts</p>
+          <p className="text-2xl font-bold">{/* Logic for resistance alerts */}</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPatients = () => (
+    <div>
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search patients..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border rounded-lg"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {filteredPatients.map(patient => (
+          <PatientCard 
+            key={patient.id} 
+            patient={patient} 
+            onSelect={() => {
+              setSelectedPatient(patient);
+              setShowPatientProfileModal(true);
+            }}
+            onDownloadSummary={handleDownloadPatientSummary}
+            isGeneratingSummary={isGeneratingSummary && selectedPatient?.id === patient.id}
+            availableMedications={availableMedications}
+            prescriptions={prescriptions}
+            doctor={doctor}
+            onPrescribe={handlePrescribe}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderAntibioticTracking = () => (
+    <div>
+      <h3 className="text-lg font-medium leading-6 text-gray-900">Antibiotic Usage Tracking</h3>
+      <div className="mt-4 overflow-x-auto">
+      </div>
+    </div>
+  );
+
+  const renderAnalytics = () => (
+    <div></div>
+  );
+
+  const renderPerformance = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    </div>
+  );
+
+  const renderAuditLog = () => (
+    <div className="bg-white p-6 rounded-lg shadow-md">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold">Daily Audit Log</h3>
+        <button onClick={() => exportToCSV(auditLogs, `Audit_Report_${new Date().toISOString().split('T')[0]}`)} className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center">
+          <FileSpreadsheet className="h-4 w-4 mr-2" />
+          Export CSV
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entity</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {auditLogs.map(log => (
+              <tr key={log.id}>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(log.eventTime).toLocaleString()}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.doctorName}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                    log.action === 'CREATE' ? 'bg-green-100 text-green-800' :
+                    log.action === 'UPDATE' ? 'bg-yellow-100 text-yellow-800' :
+                    log.action === 'DELETE' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {log.action}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.entity}</td>
+                <td className="px-6 py-4 text-sm text-gray-500">{log.details}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'overview':
+        return renderOverview();
+      case 'patients':
+        return renderPatients();
+      case 'antibiotic-tracking':
+        return renderAntibioticTracking();
+      case 'analytics':
+        return renderAnalytics();
+      case 'audit-log':
+        return renderAuditLog();
+      case 'performance':
+        return renderPerformance();
+      default:
+        return renderOverview();
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar */}
+      <div className="w-64 bg-gray-800 text-white flex flex-col">
+        <div className="px-6 py-4 border-b border-gray-700">
+          <h2 className="text-xl font-semibold">AMS Dashboard</h2>
+          <p className="text-sm text-gray-400">Dr. {doctor.name}</p>
+        </div>
+        <nav className="flex-1 px-4 py-4 space-y-2">
+          <a href="#" onClick={() => setActiveTab('overview')} className={`flex items-center px-4 py-2 rounded-md ${activeTab === 'overview' ? 'bg-gray-700' : ''}`}><LayoutDashboard className="mr-3" /> Overview</a>
+          <a href="#" onClick={() => setActiveTab('patients')} className={`flex items-center px-4 py-2 rounded-md ${activeTab === 'patients' ? 'bg-gray-700' : ''}`}><Users className="mr-3" /> Patients</a>
+          <a href="#" onClick={() => setActiveTab('antibiotic-tracking')} className={`flex items-center px-4 py-2 rounded-md ${activeTab === 'antibiotic-tracking' ? 'bg-gray-700' : ''}`}><Pill className="mr-3" /> Antibiotic Tracking</a>
+          <a href="#" onClick={() => setActiveTab('analytics')} className={`flex items-center px-4 py-2 rounded-md ${activeTab === 'analytics' ? 'bg-gray-700' : ''}`}><BarChart className="mr-3" /> Analytics</a>
+          <a href="#" onClick={() => setActiveTab('audit-log')} className={`flex items-center px-4 py-2 rounded-md ${activeTab === 'audit-log' ? 'bg-gray-700' : ''}`}><FileText className="mr-3" /> Audit Log</a>
+          <a href="#" onClick={() => setActiveTab('performance')} className={`flex items-center px-4 py-2 rounded-md ${activeTab === 'performance' ? 'bg-gray-700' : ''}`}><Award className="mr-3" /> Performance</a>
+        </nav>
+        <div className="px-6 py-4 border-t border-gray-700">
+          <button onClick={logout} className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">
+            <LogOut className="mr-2 h-4 w-4" /> Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+            <h1 className="text-2xl font-bold text-gray-900 capitalize">{activeTab.replace('-', ' ')}</h1>
+            <div className="flex items-center space-x-4">
+              <button onClick={() => setShowNotifications(!showNotifications)} className="relative">
+                <Bell className="h-6 w-6 text-gray-500" />
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full"></span>
+                )}
+              </button>
+              {showNotifications && (
+                <div className="absolute top-16 right-10 w-80 bg-white rounded-lg shadow-lg border z-10">
+                  <div className="p-4 font-bold border-b">Notifications</div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {notifications.map(n => (
+                      <div key={n.id} className={`p-4 border-b ${n.read ? 'text-gray-500' : 'font-semibold'}`}>
+                        <p>{n.message}</p>
+                        <div className="text-xs text-gray-400 mt-1">{new Date(n.createdAt).toLocaleString()}</div>
+                        {!n.read && <button onClick={() => handleMarkNotificationAsRead(n.id)} className="text-xs text-blue-500 mt-1">Mark as read</button>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+          {renderContent()}
+        </main>
+      </div>
+
+      {showPatientProfileModal && selectedPatient && (
+        <PatientProfile
+          patient={selectedPatient}
+          onClose={() => setShowPatientProfileModal(false)}
+          prescriptions={prescriptions.filter(p => p.patientId === selectedPatient.id)}
+          labResults={labResults.filter(lr => lr.patientId === selectedPatient.id)}
+          onPrescribe={(medication: Medication) => handlePrescribe(selectedPatient.id, medication)}
+          availableMedications={availableMedications}
+          doctor={doctor}
+          onDeEscalate={(prescriptionId: string, medicationId: string) => handleDeEscalate(prescriptionId, medicationId, selectedPatient.id)}
+          onStopMedication={handleStopMedication}
+          onReviewMedication={handleReviewMedication}
+        />
+      )}
+
+      {showPrescriptionModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center">
+          <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-3xl font-bold mb-6 text-gray-800 border-b pb-4">Create Prescription for {selectedPatient.name}</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Diagnosis and Symptoms */}
+              <div>
+                <div className="mb-4">
+                  <label htmlFor="diagnosis" className="block text-sm font-medium text-gray-700 mb-1">Diagnosis</label>
+                  <input type="text" id="diagnosis" value={prescriptionForm.diagnosis} onChange={e => setPrescriptionForm({...prescriptionForm, diagnosis: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
+                </div>
+                <div className="mb-4">
+                  <label htmlFor="symptoms" className="block text-sm font-medium text-gray-700 mb-1">Symptoms</label>
+                  <textarea id="symptoms" value={prescriptionForm.symptoms} onChange={e => setPrescriptionForm({...prescriptionForm, symptoms: e.target.value})} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></textarea>
+                </div>
+                <div className="mb-4">
+                  <label htmlFor="indication" className="block text-sm font-medium text-gray-700 mb-1">Indication for Antibiotic</label>
+                  <input type="text" id="indication" value={prescriptionForm.indication} onChange={e => setPrescriptionForm({...prescriptionForm, indication: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
+                </div>
+              </div>
+
+              {/* Medication Selection */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Select Medications</h3>
+                <div className="max-h-48 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                  {availableMedications.map(med => (
+                    <div key={med.id} className="flex items-center justify-between p-2 hover:bg-gray-100 rounded-md">
+                      <div>
+                        <p className="font-semibold">{med.name} <span className="text-sm text-gray-500">{med.dosage}</span></p>
+                        {med.type === 'antibiotic' && <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">Antibiotic</span>}
+                      </div>
+                      <div className="flex items-center">
+                        <input 
+                          type="number" 
+                          min="1"
+                          placeholder="Qty"
+                          className="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          onChange={(e) => setMedicationQuantities(prev => ({...prev, [med.id]: parseInt(e.target.value)}))}
+                        />
+                        <button onClick={() => addMedicationToPrescription(med, medicationQuantities[med.id] || 1)} className="ml-2 px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700">Add</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Selected Medications */}
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-gray-800 mb-2">Prescribed Medications</h3>
+              {prescriptionForm.medications.length > 0 ? (
+                <ul className="border rounded-md divide-y">
+                  {prescriptionForm.medications.map(med => (
+                    <li key={med.medicationId} className="p-3 flex justify-between items-center">
+                      <div>
+                        <p className="font-semibold">{med.medicationName} <span className="text-sm text-gray-500">{med.dosage}</span></p>
+                        <p className="text-sm text-gray-600">Quantity: {med.quantity}</p>
+                      </div>
+                      <button onClick={() => removeMedicationFromPrescription(med.medicationId)} className="text-red-500 hover:text-red-700">
+                        <XCircle className="h-5 w-5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-md">No medications added yet.</p>}
+            </div>
+
+            {/* Prescription Details */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label htmlFor="route" className="block text-sm font-medium text-gray-700 mb-1">Route</label>
+                <select id="route" value={prescriptionForm.route} onChange={e => setPrescriptionForm({...prescriptionForm, route: e.target.value as any})} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                  <option>Oral</option>
+                  <option>IV</option>
+                  <option>IM</option>
+                  <option>Topical</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="frequency" className="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
+                <input type="text" id="frequency" value={prescriptionForm.frequency} onChange={e => setPrescriptionForm({...prescriptionForm, frequency: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                <input type="text" id="duration" value={prescriptionForm.duration} onChange={e => setPrescriptionForm({...prescriptionForm, duration: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+            </div>
+
+            {/* Notes and Signature */}
+            <div className="mt-6">
+              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea id="notes" value={prescriptionForm.notes} onChange={e => setPrescriptionForm({...prescriptionForm, notes: e.target.value})} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></textarea>
+            </div>
+            
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-gray-800 mb-2">Digital Signature</h3>
+              {showSignatureModal && (
+                <DigitalSignatureCapture 
+                  onSignatureCapture={handleSignatureCapture} 
+                  onClose={() => setShowSignatureModal(false)}
+                  doctorName={doctor.name}
+                  licenseNumber={doctor.licenseNumber}
+                />
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="mt-8 flex justify-end space-x-4">
+              <button onClick={() => setShowPrescriptionModal(false)} className="px-6 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+              <button 
+                onClick={handleCreatePrescription} 
+                disabled={isGeneratingPDF}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-blue-300 flex items-center"
+              >
+                {isGeneratingPDF ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                Create & Send Prescription
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DoctorDashboard;

@@ -1,0 +1,275 @@
+const express = require('express');
+const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const Patient = require('../models/Patient');
+const Doctor = require('../models/Doctor');
+const Pharmacist = require('../models/Pharmacist');
+const Admin = require('../models/Admin');
+const twilio = require('twilio');
+
+const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+
+// @route   POST /api/auth/register
+// @desc    Register a new user
+router.post('/register', async (req, res) => {
+  const { name, email, phoneNumber, password, role, status } = req.body;
+
+  try {
+    // Validate email
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ msg: 'Valid email is required' });
+    }
+
+    // Validate password
+    if (!password || password.length < 6) {
+      return res.status(400).json({ msg: 'Password must be at least 6 characters' });
+    }
+
+    // Check if user exists
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ msg: 'User already exists' });
+    }
+
+    // Create user
+    user = new User({
+      email,
+      password,
+      phoneNumber: phoneNumber || null,
+      role,
+      status: status || 'active',
+    });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+
+    await user.save();
+
+    // Create a profile based on the role
+    let profile;
+    if (role === 'patient') {
+      profile = new Patient({ 
+        user: user.id, 
+        name, 
+        email, 
+        phoneNumber 
+      });
+    } else if (role === 'doctor') {
+      // Default values if not provided
+      const licenseNumber = req.body.licenseNumber || `TEMP-${Date.now()}`;
+      const specialty = req.body.specialty || 'General Practice';
+      profile = new Doctor({ 
+        user: user.id, 
+        name, 
+        email, 
+        licenseNumber, 
+        specialty,
+        status: 'active'
+      });
+    } else if (role === 'pharmacist') {
+      const licenseNumber = req.body.licenseNumber || `TEMP-${Date.now()}`;
+      const pharmacyName = req.body.pharmacyName || `${name}'s Pharmacy`;
+      profile = new Pharmacist({ 
+        user: user.id, 
+        name, 
+        email, 
+        licenseNumber, 
+        pharmacyName 
+      });
+    } else if (role === 'admin') {
+      profile = new Admin({ 
+        user: user.id, 
+        name, 
+        email 
+      });
+    }
+
+    if (profile) {
+      await profile.save();
+    }
+
+    const payload = {
+      user: {
+        id: user.id,
+        role: user.role,
+      },
+    };
+
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET,
+      { expiresIn: 3600 },
+      (err, token) => {
+        if (err) throw err;
+        res.json({ token, user, profile });
+      }
+    );
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// @route   POST /api/auth/login
+// @desc    Authenticate user & get token (Simplified for demo)
+router.post('/login', async (req, res) => {
+  const { email, password, role } = req.body;
+
+  try {
+    // For demo purposes, create a mock user and profile based on role
+    const mockUser = {
+      id: `${role}_demo_id`,
+      role: role,
+      email: email,
+      status: 'active'
+    };
+
+    let mockProfile;
+    switch (role) {
+      case 'doctor':
+        mockProfile = {
+          id: 'doctor_profile_id',
+          user: mockUser.id,
+          name: 'Dr. John Smith',
+          email: email,
+          licenseNumber: 'DOC12345',
+          specialty: 'Internal Medicine',
+          status: 'active'
+        };
+        break;
+      case 'admin':
+        mockProfile = {
+          id: 'admin_profile_id',
+          user: mockUser.id,
+          name: 'Admin User',
+          email: email,
+          role: 'admin'
+        };
+        break;
+      case 'pharmacist':
+        mockProfile = {
+          id: 'pharmacist_profile_id',
+          user: mockUser.id,
+          name: 'Pharmacist Jane Doe',
+          email: email,
+          licenseNumber: 'PHARM12345',
+          pharmacyName: 'Demo Pharmacy'
+        };
+        break;
+      case 'patient':
+        mockProfile = {
+          id: 'patient_profile_id',
+          user: mockUser.id,
+          name: 'Patient User',
+          email: email,
+          phoneNumber: '+1234567890',
+          dateOfBirth: '1990-01-01'
+        };
+        break;
+      default:
+        mockProfile = {
+          id: 'default_profile_id',
+          user: mockUser.id,
+          name: 'Demo User',
+          email: email
+        };
+    }
+
+    // Create a simple token
+    const token = `demo_token_${role}_${Date.now()}`;
+
+    res.json({
+      token,
+      user: mockUser,
+      profile: mockProfile
+    });
+
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ msg: 'Server error during login' });
+  }
+});
+
+// @route   POST /api/auth/send-otp
+// @desc    Send OTP to user's phone
+router.post('/send-otp', async (req, res) => {
+    const { phoneNumber } = req.body;
+    
+    try {
+        // Find user to ensure they exist before sending OTP
+        const user = await User.findOne({ phoneNumber });
+        if (!user) {
+            return res.status(400).json({ msg: 'User with this phone number does not exist.' });
+        }
+
+        if (!verifyServiceSid) {
+            console.error("Twilio Verify Service SID is not configured.");
+            return res.status(500).send("Server configuration error: Twilio service SID is missing.");
+        }
+
+        await client.verify.v2.services(verifyServiceSid)
+            .verifications
+            .create({ to: phoneNumber, channel: 'sms' });
+
+        res.json({ msg: 'OTP sent' });
+
+    } catch (err) {
+        console.error('Twilio Error:', err.message);
+        res.status(500).send(`Server error during OTP sending: ${err.message}`);
+    }
+});
+
+// @route   POST /api/auth/login-otp
+// @desc    Login with OTP
+router.post('/login-otp', async (req, res) => {
+    const { phoneNumber, otp } = req.body;
+
+    try {
+        if (!verifyServiceSid) {
+            console.error("Twilio Verify Service SID is not configured.");
+            return res.status(500).send("Server configuration error: Twilio service SID is missing.");
+        }
+
+        const verification_check = await client.verify.v2.services(verifyServiceSid)
+            .verificationChecks
+            .create({ to: phoneNumber, code: otp });
+
+        if (verification_check.status === 'approved') {
+            const user = await User.findOne({ phoneNumber });
+            if (!user) {
+                return res.status(400).json({ msg: 'User not found after OTP verification' });
+            }
+
+            const profile = await Patient.findOne({ user: user.id });
+
+            const payload = {
+                user: {
+                    id: user.id,
+                    role: user.role,
+                },
+            };
+
+            jwt.sign(
+                payload,
+                process.env.JWT_SECRET,
+                { expiresIn: '5d' },
+                (err, token) => {
+                    if (err) throw err;
+                    res.json({ token, user, profile });
+                }
+            );
+        } else {
+            return res.status(400).json({ msg: 'Invalid OTP' });
+        }
+
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
+    }
+});
+
+
+module.exports = router;

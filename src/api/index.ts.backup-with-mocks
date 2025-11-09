@@ -1,0 +1,498 @@
+import axios from 'axios';
+
+// Create axios instance - FULLY CONNECTED TO REAL BACKEND
+const api = axios.create({
+  baseURL: 'http://localhost:3001/api',
+});
+
+// Request interceptor - adds auth token to all requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  
+  // REMOVED ALL MOCK INTERCEPTORS - NOW USING REAL BACKEND
+  // All requests will go to the real backend API
+  
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
+// Response interceptor for handling errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      // Server responded with error status
+      if (error.response.status === 401) {
+        // Token expired or invalid
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userProfile');
+        // Don't redirect, let the component handle it
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+    const { phoneNumber } = (config.data as any) || {};
+    
+    // Generate a mock OTP
+    const mockOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Log the OTP to console for demo purposes
+    console.log('=== MOCK OTP SENT ===');
+    console.log(`Phone: ${phoneNumber}`);
+    console.log(`OTP: ${mockOTP}`);
+    console.log('=====================');
+    
+    // Store the OTP in localStorage for validation later
+    localStorage.setItem('mockOTP', mockOTP);
+    localStorage.setItem('mockOTPPhone', phoneNumber);
+    
+    // Show alert with OTP for demo
+    alert(`Your OTP is: ${mockOTP}\n\n(This is a demo - in production, this would be sent via SMS)`);
+    
+    return Promise.reject({
+      response: {
+        data: {
+          success: true,
+          message: 'OTP sent successfully',
+          otp: mockOTP // Only for demo purposes
+        },
+        status: 200
+      },
+      config,
+      isAxiosError: true,
+      toJSON: () => ({})
+    });
+  }
+  
+  // Mock handler for login-otp endpoint
+  if (config.url?.includes('/auth/login-otp') && config.method === 'post') {
+    const { phoneNumber, otp } = (config.data as any) || {};
+    
+    // Verify OTP
+    const storedOTP = localStorage.getItem('mockOTP');
+    const storedPhone = localStorage.getItem('mockOTPPhone');
+    
+    if (storedOTP === otp && storedPhone === phoneNumber) {
+      // Clear the OTP after successful verification
+      localStorage.removeItem('mockOTP');
+      localStorage.removeItem('mockOTPPhone');
+      
+      // Create mock patient user
+      const mockUser = {
+        id: `patient_${Date.now()}`,
+        role: 'patient',
+        email: `patient_${phoneNumber}@example.com`,
+        phoneNumber: phoneNumber,
+        status: 'active',
+        isVerified: true,
+        createdAt: new Date().toISOString()
+      };
+      
+      const mockProfile = {
+        id: `patient_profile_${Date.now()}`,
+        name: 'Patient User',
+        email: mockUser.email,
+        phoneNumber: phoneNumber,
+        age: 30,
+        gender: 'not_specified',
+        allergies: [],
+        medicalHistory: [],
+        profileComplete: false,
+        cart: []
+      };
+      
+      const mockToken = `mock_token_patient_${Date.now()}`;
+      
+      return Promise.reject({
+        response: {
+          data: {
+            token: mockToken,
+            user: mockUser,
+            profile: mockProfile
+          },
+          status: 200
+        },
+        config,
+        isAxiosError: true,
+        toJSON: () => ({})
+      });
+    } else {
+      return Promise.reject({
+        response: {
+          data: {
+            error: 'Invalid OTP'
+          },
+          status: 401
+        },
+        config,
+        isAxiosError: true,
+        toJSON: () => ({})
+      });
+    }
+  }
+  
+  // Mock handler for user creation/registration (admin creating users or patient self-registration)
+  if (config.url?.includes('/auth/register') && config.method === 'post') {
+    const { name, email, password, role, phoneNumber, status, licenseNumber, specialty, pharmacyName } = (config.data as any) || {};
+    
+    console.log('=== MOCK USER REGISTRATION ===');
+    console.log(`Name: ${name}`);
+    console.log(`Email: ${email}`);
+    console.log(`Role: ${role}`);
+    console.log('==============================');
+    
+    // Create mock user
+    const mockUser = {
+      id: `${role}_${Date.now()}`,
+      _id: `${role}_${Date.now()}`, // MongoDB style ID
+      role: role || 'patient',
+      email: email,
+      phoneNumber: phoneNumber || `+1${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+      status: status || 'active',
+      isVerified: true,
+      createdAt: new Date().toISOString()
+    };
+    
+    // Create role-specific profile
+    let mockProfile: any;
+    switch (role) {
+      case 'doctor':
+        mockProfile = {
+          id: `doctor_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: name,
+          email: email,
+          licenseNumber: licenseNumber || `DOC-${Date.now()}`,
+          specialty: specialty || 'General Practice',
+          department: 'General Medicine',
+          phoneNumber: mockUser.phoneNumber,
+          status: status || 'active',
+          patients: [],
+          prescriptions: [],
+          lastLogin: new Date().toISOString()
+        };
+        break;
+      case 'pharmacist':
+        mockProfile = {
+          id: `pharmacist_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: name,
+          email: email,
+          licenseNumber: licenseNumber || `PHARM-${Date.now()}`,
+          pharmacyId: `PHARMACY-${Date.now()}`,
+          pharmacyName: pharmacyName || `${name}'s Pharmacy`,
+          phoneNumber: mockUser.phoneNumber,
+          lastLogin: new Date().toISOString()
+        };
+        break;
+      case 'admin':
+        mockProfile = {
+          id: `admin_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: name,
+          email: email,
+          permissions: ['user_management', 'analytics', 'reports', 'system_config'],
+          phoneNumber: mockUser.phoneNumber,
+          lastLogin: new Date().toISOString()
+        };
+        break;
+      case 'patient':
+      default:
+        mockProfile = {
+          id: `patient_profile_${Date.now()}`,
+          name: name || 'Patient User',
+          email: email,
+          phoneNumber: phoneNumber || mockUser.phoneNumber,
+          age: 30,
+          gender: 'not_specified',
+          allergies: [],
+          medicalHistory: [],
+          profileComplete: false,
+          cart: []
+        };
+    }
+    
+    const mockToken = `mock_token_${role}_${Date.now()}`;
+    
+    // Store in localStorage for demo purposes
+    const existingUsers = JSON.parse(localStorage.getItem('mockSystemUsers') || '[]');
+    existingUsers.push({
+      user: mockUser,
+      profile: mockProfile,
+      createdAt: new Date().toISOString()
+    });
+    localStorage.setItem('mockSystemUsers', JSON.stringify(existingUsers));
+    
+    return Promise.reject({
+      response: {
+        data: {
+          success: true,
+          message: 'User registered successfully',
+          token: mockToken,
+          user: mockUser,
+          profile: mockProfile
+        },
+        status: 200
+      },
+      config,
+      isAxiosError: true,
+      toJSON: () => ({})
+    });
+  }
+  
+  // Mock handler for fetching all users (admin user management)
+  if (config.url?.includes('/users') && config.method === 'get') {
+    console.log('=== MOCK FETCH USERS ===');
+    
+    // Get users from localStorage
+    const storedUsers = JSON.parse(localStorage.getItem('mockSystemUsers') || '[]');
+    
+    // Add some default demo users if none exist
+    const defaultUsers = [
+      {
+        user: {
+          _id: 'doctor_demo_1',
+          id: 'doctor_demo_1',
+          role: 'doctor',
+          email: 'john.smith@hospital.com',
+          status: 'active',
+          createdAt: new Date('2025-01-15').toISOString()
+        },
+        profile: {
+          id: 'doctor_profile_1',
+          name: 'Dr. John Smith',
+          email: 'john.smith@hospital.com',
+          licenseNumber: 'DOC12345',
+          specialty: 'Internal Medicine',
+          department: 'General Medicine',
+          lastLogin: new Date().toISOString()
+        }
+      },
+      {
+        user: {
+          _id: 'pharmacist_demo_1',
+          id: 'pharmacist_demo_1',
+          role: 'pharmacist',
+          email: 'jane.doe@pharmacy.com',
+          status: 'active',
+          createdAt: new Date('2025-02-10').toISOString()
+        },
+        profile: {
+          id: 'pharmacist_profile_1',
+          name: 'Pharmacist Jane Doe',
+          email: 'jane.doe@pharmacy.com',
+          licenseNumber: 'PHARM12345',
+          pharmacyName: 'City Pharmacy',
+          lastLogin: new Date().toISOString()
+        }
+      },
+      {
+        user: {
+          _id: 'admin_demo_1',
+          id: 'admin_demo_1',
+          role: 'admin',
+          email: 'admin@hospital.com',
+          status: 'active',
+          createdAt: new Date('2025-01-01').toISOString()
+        },
+        profile: {
+          id: 'admin_profile_1',
+          name: 'Admin User',
+          email: 'admin@hospital.com',
+          permissions: ['user_management', 'analytics', 'reports'],
+          lastLogin: new Date().toISOString()
+        }
+      }
+    ];
+    
+    const allUsers = [...defaultUsers, ...storedUsers];
+    const users = allUsers.map(u => u.user);
+    const profiles = allUsers.map(u => u.profile);
+    
+    return Promise.reject({
+      response: {
+        data: {
+          users: users,
+          profiles: profiles
+        },
+        status: 200
+      },
+      config,
+      isAxiosError: true,
+      toJSON: () => ({})
+    });
+  }
+  
+  // Mock handler for updating user
+  if (config.url?.includes('/users/') && config.method === 'put') {
+    const userId = config.url.split('/users/')[1];
+    const updateData = config.data as any;
+    
+    console.log('=== MOCK UPDATE USER ===');
+    console.log(`User ID: ${userId}`);
+    console.log('Update Data:', updateData);
+    console.log('========================');
+    
+    // Update in localStorage
+    const storedUsers = JSON.parse(localStorage.getItem('mockSystemUsers') || '[]');
+    const userIndex = storedUsers.findIndex((u: any) => u.user.id === userId || u.user._id === userId);
+    
+    if (userIndex !== -1) {
+      storedUsers[userIndex].profile = {
+        ...storedUsers[userIndex].profile,
+        ...updateData,
+        name: updateData.name || storedUsers[userIndex].profile.name,
+        email: updateData.email || storedUsers[userIndex].profile.email
+      };
+      storedUsers[userIndex].user = {
+        ...storedUsers[userIndex].user,
+        status: updateData.status || storedUsers[userIndex].user.status,
+        email: updateData.email || storedUsers[userIndex].user.email
+      };
+      localStorage.setItem('mockSystemUsers', JSON.stringify(storedUsers));
+    }
+    
+    return Promise.reject({
+      response: {
+        data: {
+          success: true,
+          message: 'User updated successfully',
+          user: updateData
+        },
+        status: 200
+      },
+      config,
+      isAxiosError: true,
+      toJSON: () => ({})
+    });
+  }
+  
+  // Return mock data for auth endpoints
+  if (config.url?.includes('/auth/login') && config.method === 'post') {
+    const { role } = (config.data as any) || {};
+    
+    const mockUser = {
+      id: `${role}_demo_${Date.now()}`,
+      role: role,
+      email: (config.data as any).email,
+      status: 'active'
+    };
+
+    let mockProfile: any;
+    switch (role) {
+      case 'doctor':
+        mockProfile = {
+          id: `doctor_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: 'Dr. John Smith',
+          email: mockUser.email,
+          licenseNumber: 'DOC12345',
+          specialty: 'Internal Medicine',
+          status: 'active',
+          phoneNumber: '+1234567890'
+        };
+        break;
+      case 'admin':
+        mockProfile = {
+          id: `admin_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: 'Admin User',
+          email: mockUser.email,
+          role: 'admin',
+          phoneNumber: '+1234567890'
+        };
+        break;
+      case 'pharmacist':
+        mockProfile = {
+          id: `pharmacist_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: 'Pharmacist Jane Doe',
+          email: mockUser.email,
+          licenseNumber: 'PHARM12345',
+          pharmacyName: 'Demo Pharmacy',
+          phoneNumber: '+1234567890'
+        };
+        break;
+      case 'patient':
+        mockProfile = {
+          id: `patient_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: 'Patient User',
+          email: mockUser.email,
+          phoneNumber: '+1234567890',
+          dateOfBirth: '1990-01-01',
+          age: 34,
+          gender: 'male',
+          bloodType: 'O+',
+          allergies: [],
+          medicalHistory: []
+        };
+        break;
+      default:
+        mockProfile = {
+          id: `default_profile_${Date.now()}`,
+          user: mockUser.id,
+          name: 'Demo User',
+          email: mockUser.email,
+          phoneNumber: '+1234567890'
+        };
+    }
+
+    const mockToken = `mock_token_${role}_${Date.now()}`;
+    
+    // Return mock response directly
+    return Promise.reject({
+      response: {
+        data: {
+          token: mockToken,
+          user: mockUser,
+          profile: mockProfile
+        },
+        status: 200
+      },
+      config,
+      isAxiosError: true,
+      toJSON: () => ({})
+    });
+  }
+  
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
+// Response interceptor for handling errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // If this is our mock "error", treat it as success
+    if (error.response && error.response.status === 200) {
+      return Promise.resolve(error.response);
+    }
+    
+    if (error.response) {
+      // Server responded with error status
+      if (error.response.status === 401) {
+        // Token expired or invalid
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userProfile');
+        // Don't redirect, let the component handle it
+      }
+    } else if (error.request) {
+      // Request made but no response - return mock data
+      console.warn('Network Error - using mock data:', error.request);
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;

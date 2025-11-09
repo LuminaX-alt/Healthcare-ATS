@@ -1,0 +1,1958 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { Doctor, Patient, Prescription, Medication, LabResult, AuditLog, AntibioticGuideline, PrescribedMedication, DoctorPerformanceMetrics, Notification } from '../types';
+import { PrescriptionPDFGenerator, DigitalSignature } from '../utils/pdfGenerator';
+import DigitalSignatureCapture from './DigitalSignatureCapture';
+import api from '../api';
+import { validateAntibioticDosage, playAlertSound, getGuidelineInfo } from '../utils/whoGuidelines';
+import { 
+  Users, 
+  Pill, 
+  FileText, 
+  TrendingUp, 
+  Search, 
+  Plus, 
+  Calendar,
+  AlertTriangle,
+  BarChart3,
+  LogOut,
+  User,
+  Eye,
+  Edit,
+  Phone,
+  Mail,
+  MapPin,
+  Heart,
+  X,
+  Save,
+  Activity,
+  ClipboardList,
+  Download,
+  PenTool,
+  ShieldCheck,
+  History,
+  FlaskConical,
+  Lightbulb,
+  FileSpreadsheet,
+  Bell,
+  TrendingDown,
+  Award,
+  Loader2,
+  BarChart,
+  LayoutDashboard,
+  XCircle,
+  Send,
+  CheckCircle
+} from 'lucide-react';
+import PatientProfile from './PatientProfile';
+import PatientCard from './PatientCard';
+
+interface DashboardData {
+  patients: Patient[];
+  prescriptions: Prescription[];
+  labResults: LabResult[];
+  auditLogs: AuditLog[];
+  guidelines: AntibioticGuideline[];
+  notifications: Notification[];
+  performanceMetrics: DoctorPerformanceMetrics | null;
+  availableMedications: Medication[];
+}
+
+const DoctorDashboard: React.FC = () => {
+  const { user, userProfile, isLoading: authLoading, logout } = useAuth();
+  
+  console.log('DoctorDashboard render:', { user, userProfile, authLoading });
+  
+  // ALL useState hooks MUST come before any conditional returns
+  const [activeTab, setActiveTab] = useState<'overview' | 'patients' | 'antibiotic-tracking' | 'analytics' | 'audit-log' | 'performance'>('overview');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [showPatientProfileModal, setShowPatientProfileModal] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [digitalSignature, setDigitalSignature] = useState<string | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [medicationQuantities, setMedicationQuantities] = useState<{ [key: string]: number }>({});
+  
+  // WHO Antibiotic Guidelines State
+  const [showDosageWarning, setShowDosageWarning] = useState(false);
+  const [dosageWarnings, setDosageWarnings] = useState<Array<{
+    medication: string;
+    currentDosage: number;
+    maxDosage: number;
+    severity: 'warning' | 'critical';
+    message: string;
+  }>>([]);
+  
+  // Enhanced Patient Tracking Features
+  const [showPatientNotesModal, setShowPatientNotesModal] = useState(false);
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [showVisitHistoryModal, setShowVisitHistoryModal] = useState(false);
+  const [patientFilter, setPatientFilter] = useState<'all' | 'critical' | 'follow-up' | 'recent'>('all');
+  const [patientNotes, setPatientNotes] = useState<{[key: string]: any[]}>({});
+  const [patientVisits, setPatientVisits] = useState<{[key: string]: any[]}>({});
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [newNote, setNewNote] = useState('');
+  const [newVitals, setNewVitals] = useState({
+    bloodPressure: '',
+    heartRate: '',
+    temperature: '',
+    weight: '',
+    height: '',
+    oxygenSaturation: '',
+    respiratoryRate: ''
+  });
+  
+  const [prescriptionForm, setPrescriptionForm] = useState({
+    diagnosis: '',
+    symptoms: '',
+    medications: [] as any[],
+    notes: '',
+    indication: '',
+    route: 'Oral' as 'Oral' | 'IV' | 'IM' | 'Topical',
+    frequency: '',
+    duration: ''
+  });
+  const [prescribedMedications, setPrescribedMedications] = useState<PrescribedMedication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    patients: [],
+    prescriptions: [],
+    labResults: [],
+    auditLogs: [],
+    guidelines: [],
+    notifications: [],
+    performanceMetrics: null,
+    availableMedications: []
+  });
+
+  const doctor = userProfile as Doctor;
+
+  // Load dashboard data with mock data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!userProfile || !user) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // Mock comprehensive data for demo
+        const mockPatients: Patient[] = [
+          {
+            id: 'PAT001',
+            name: 'John Doe',
+            email: 'john.doe@example.com',
+            age: 45,
+            gender: 'male',
+            phoneNumber: '+1234567890',
+            allergies: ['Penicillin'],
+            medicalHistory: ['Hypertension', 'Type 2 Diabetes'],
+            address: '123 Main St, Anytown, USA',
+            profileComplete: true,
+            cart: [],
+            vitals: {
+              bloodPressure: '120/80',
+              heartRate: 75,
+              temperature: 98.6,
+              weight: 180,
+              height: 72
+            }
+          },
+          {
+            id: 'PAT002',
+            name: 'Jane Smith',
+            email: 'jane.smith@example.com',
+            age: 32,
+            gender: 'female',
+            phoneNumber: '+1234567891',
+            allergies: [],
+            medicalHistory: ['Asthma'],
+            address: '456 Oak Ave, Anytown, USA',
+            profileComplete: true,
+            cart: [],
+            vitals: {
+              bloodPressure: '115/75',
+              heartRate: 70,
+              temperature: 98.4,
+              weight: 135,
+              height: 65
+            }
+          },
+          {
+            id: 'PAT003',
+            name: 'Robert Johnson',
+            email: 'robert.j@example.com',
+            age: 58,
+            gender: 'male',
+            phoneNumber: '+1234567892',
+            allergies: ['Sulfa drugs'],
+            medicalHistory: ['Heart Disease', 'High Cholesterol'],
+            address: '789 Pine Ln, Anytown, USA',
+            profileComplete: true,
+            cart: [],
+            vitals: {
+              bloodPressure: '140/90',
+              heartRate: 80,
+              temperature: 98.5,
+              weight: 200,
+              height: 70
+            }
+          }
+        ];
+
+        const mockMedications: Medication[] = [
+          { id: '1', name: 'Amoxicillin 500mg', type: 'antibiotic', category: 'Penicillins', dosage: '500mg', price: 25.99, stock: 100, manufacturer: 'PharmaCo', expiryDate: '2026-12-31', requiresPrescription: true, sideEffects: ['Nausea', 'Diarrhea'] },
+          { id: '2', name: 'Ciprofloxacin 250mg', type: 'antibiotic', category: 'Quinolones', dosage: '250mg', price: 35.50, stock: 50, manufacturer: 'MediLabs', expiryDate: '2026-06-30', requiresPrescription: true, sideEffects: ['Dizziness', 'Headache'] },
+          { id: '3', name: 'Azithromycin 250mg', type: 'antibiotic', category: 'Macrolides', dosage: '250mg', price: 30.00, stock: 75, manufacturer: 'HealthCorp', expiryDate: '2026-09-15', requiresPrescription: true, sideEffects: ['Stomach upset', 'Diarrhea'] },
+          { id: '4', name: 'Paracetamol 500mg', type: 'general', category: 'Analgesic', dosage: '500mg', price: 10.00, stock: 200, manufacturer: 'HealthWell', expiryDate: '2027-08-15', requiresPrescription: false, sideEffects: ['Rare skin rashes'] },
+          { id: '5', name: 'Ibuprofen 200mg', type: 'general', category: 'NSAID', dosage: '200mg', price: 12.50, stock: 150, manufacturer: 'PainFree', expiryDate: '2027-05-20', requiresPrescription: false, sideEffects: ['Stomach upset'] }
+        ];
+
+        setDashboardData({
+          patients: mockPatients,
+          availableMedications: mockMedications,
+          prescriptions: [],
+          auditLogs: [],
+          labResults: [],
+          guidelines: [],
+          notifications: [],
+          performanceMetrics: null,
+        });
+
+      } catch (error) {
+        console.error("Failed to fetch dashboard data", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [userProfile, user]);
+
+  const { patients, prescriptions, labResults, auditLogs, guidelines, notifications, performanceMetrics, availableMedications } = dashboardData;
+  
+  // NOW we can have conditional returns
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+          <p className="text-lg text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || !userProfile) {
+    console.error('No user or profile found:', { user, userProfile });
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <AlertTriangle className="w-12 h-12 text-yellow-500" />
+          <p className="text-lg text-gray-600">Unable to load doctor profile.</p>
+          <p className="text-sm text-gray-500">Please try logging in again.</p>
+          <button 
+            onClick={() => window.location.href = '/login/doctor'} 
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Helper functions
+  const filteredPatients = patients.filter(p =>
+    p.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handlePatientSelect = (patient: Patient) => {
+    setSelectedPatient(patient);
+    setShowPatientProfileModal(true);
+  };
+
+  const handlePrescribe = (patientId: string, medication: Medication) => {
+    const patient = patients.find(p => p.id === patientId);
+    if (patient) {
+      setSelectedPatient(patient);
+      setShowPrescriptionModal(true);
+    }
+  };
+
+  const addMedicationToPrescription = (medication: Medication, quantity: number) => {
+    if (quantity <= 0) return;
+
+    // WHO Guidelines Validation for Antibiotics
+    if (medication.type === 'antibiotic') {
+      // Check if frequency and duration are provided
+      if (!prescriptionForm.frequency || !prescriptionForm.duration) {
+        alert('⚠️ Please enter frequency and duration before adding antibiotics.\n\nExample:\nFrequency: "3 times daily"\nDuration: "7 days"');
+        return;
+      }
+
+      const validation = validateAntibioticDosage(
+        medication.name,
+        quantity,
+        prescriptionForm.frequency,
+        prescriptionForm.duration
+      );
+
+      // Show warnings if any exist
+      if (validation.warnings.length > 0) {
+        const warningMessages = validation.warnings.map(w => w.message).join('\n\n');
+        
+        // Check for critical warnings
+        const hasCritical = validation.warnings.some(w => w.severity === 'critical');
+        const hasWarning = validation.warnings.some(w => w.severity === 'warning');
+        
+        // For critical warnings, play alert sound and require confirmation
+        if (hasCritical) {
+          playAlertSound();
+          
+          const proceed = window.confirm(
+            `🚨 WHO ANTIBIOTIC GUIDELINES - CRITICAL ALERT\n\n${warningMessages}\n\n` +
+            `This prescription may pose a significant risk to patient safety.\n\n` +
+            `Do you want to proceed anyway? This will be logged for review.`
+          );
+
+          if (!proceed) {
+            alert('✓ Prescription cancelled. Please review dosage and try again.');
+            return; // Block the medication from being added
+          }
+        } 
+        // For warning level, show alert but allow to proceed
+        else if (hasWarning) {
+          const proceed = window.confirm(
+            `⚠️ WHO ANTIBIOTIC GUIDELINES - WARNING\n\n${warningMessages}\n\n` +
+            `Consider reviewing the dosage. Do you want to proceed?`
+          );
+
+          if (!proceed) {
+            return; // Allow cancellation
+          }
+        }
+        // For info level, just log
+        else {
+          console.log('WHO Guidelines Info:', warningMessages);
+        }
+      }
+    }
+
+    const prescriptionMed = {
+      medicationId: medication.id,
+      medicationName: medication.name,
+      dosage: medication.dosage,
+      quantity: quantity,
+      instructions: `Take as prescribed by doctor`,
+      isAntibiotic: medication.type === 'antibiotic'
+    };
+
+    setPrescriptionForm(prev => ({
+      ...prev,
+      medications: [...prev.medications, prescriptionMed]
+    }));
+
+    // Show success message with WHO compliance info for antibiotics
+    if (medication.type === 'antibiotic') {
+      const guideline = getGuidelineInfo(medication.name);
+      if (guideline) {
+        alert(
+          `✓ ${medication.name} added to prescription\n\n` +
+          `WHO AWaRe Category: ${guideline.awaReCategory}\n` +
+          `Recommended Daily: ${guideline.recommendedDosage}mg\n` +
+          `Max Duration: ${guideline.maxDuration} days\n` +
+          `Indications: ${guideline.indications.join(', ')}`
+        );
+      } else {
+        alert(`✓ ${medication.name} added to prescription\n\nNote: No WHO guidelines available for this antibiotic.`);
+      }
+    }
+  };
+
+  const removeMedicationFromPrescription = (medicationId: string) => {
+    setPrescriptionForm(prev => ({
+      ...prev,
+      medications: prev.medications.filter(med => med.medicationId !== medicationId)
+    }));
+  };
+
+  // Enhanced Patient Tracking Handler Functions
+  const handleAddNote = () => {
+    if (!selectedPatient || !newNote.trim()) return;
+    
+    const note = {
+      id: `NOTE-${Date.now()}`,
+      patientId: selectedPatient.id,
+      content: newNote,
+      timestamp: new Date().toISOString(),
+      doctor: doctor?.name || 'Unknown Doctor'
+    };
+    
+    setPatientNotes(prev => ({
+      ...prev,
+      [selectedPatient.id]: [...(prev[selectedPatient.id] || []), note]
+    }));
+    
+    setNewNote('');
+    alert('Note added successfully!');
+  };
+
+  const handleRecordVitals = () => {
+    if (!selectedPatient) return;
+    
+    const vitalsRecord = {
+      id: `VITALS-${Date.now()}`,
+      patientId: selectedPatient.id,
+      ...newVitals,
+      timestamp: new Date().toISOString(),
+      recordedBy: doctor?.name || 'Unknown Doctor'
+    };
+    
+    setPatientVisits(prev => ({
+      ...prev,
+      [selectedPatient.id]: [...(prev[selectedPatient.id] || []), vitalsRecord]
+    }));
+    
+    setNewVitals({
+      bloodPressure: '',
+      heartRate: '',
+      temperature: '',
+      weight: '',
+      height: '',
+      oxygenSaturation: '',
+      respiratoryRate: ''
+    });
+    
+    setShowVitalsModal(false);
+    alert('Vitals recorded successfully!');
+  };
+
+  const handleScheduleAppointment = (appointmentData: any) => {
+    if (!selectedPatient) return;
+    
+    const appointment = {
+      id: `APPT-${Date.now()}`,
+      patientId: selectedPatient.id,
+      patientName: selectedPatient.name,
+      doctorId: doctor?.id || 'unknown',
+      doctorName: doctor?.name || 'Unknown Doctor',
+      date: appointmentData.date,
+      time: appointmentData.time,
+      reason: appointmentData.reason,
+      status: 'scheduled',
+      createdAt: new Date().toISOString()
+    };
+    
+    setAppointments(prev => [...prev, appointment]);
+    setShowAppointmentModal(false);
+    alert('Appointment scheduled successfully!');
+  };
+
+  const getFilteredPatients = () => {
+    let filtered = filteredPatients;
+    
+    switch (patientFilter) {
+      case 'critical':
+        // Filter patients with critical vitals (high BP, etc.)
+        filtered = filtered.filter(p => {
+          if (!p.vitals) return false;
+          const bpSystolic = parseInt(p.vitals.bloodPressure?.split('/')[0] || '0');
+          return bpSystolic > 140 || (p.vitals.heartRate && p.vitals.heartRate > 100);
+        });
+        break;
+      case 'follow-up':
+        // Filter patients with appointments
+        filtered = filtered.filter(p => 
+          appointments.some(a => a.patientId === p.id && a.status === 'scheduled')
+        );
+        break;
+      case 'recent':
+        // Filter patients with recent visits
+        filtered = filtered.filter(p => patientVisits[p.id]?.length > 0);
+        break;
+      default:
+        break;
+    }
+    
+    return filtered;
+  };
+
+  const getPatientStatus = (patient: Patient): 'critical' | 'follow-up' | 'normal' => {
+    if (patient.vitals) {
+      const bpSystolic = parseInt(patient.vitals.bloodPressure?.split('/')[0] || '0');
+      if (bpSystolic > 140 || (patient.vitals.heartRate && patient.vitals.heartRate > 100)) return 'critical';
+    }
+    
+    const hasFollowUp = appointments.some(a => 
+      a.patientId === patient.id && a.status === 'scheduled'
+    );
+    if (hasFollowUp) return 'follow-up';
+    
+    return 'normal';
+  };
+
+  const handleCaptureSignature = () => {
+    setShowSignatureModal(true);
+  };
+
+  const handleSignatureSave = (signature: string) => {
+    setDigitalSignature(signature);
+    setShowSignatureModal(false);
+  };
+
+  const handleGeneratePDF = async () => {
+    if (!selectedPatient || prescriptionForm.medications.length === 0) {
+      alert('Please add medications before generating PDF');
+      return;
+    }
+
+    setIsGeneratingPDF(true);
+    try {
+      // Create properly structured medications for PDF generation
+      const structuredMedications: PrescribedMedication[] = prescriptionForm.medications.map(med => {
+        const medication = availableMedications.find(m => m.id === med.medicationId);
+        return {
+          id: `PM-${Date.now()}-${med.medicationId}`,
+          patient: selectedPatient,
+          medication: medication!,
+          dosage: med.dosage,
+          frequency: prescriptionForm.frequency || 'As directed',
+          duration: prescriptionForm.duration || '7 days',
+          quantity: med.quantity,
+          prescriptionDate: new Date().toISOString(),
+          dispensed: false,
+          route: prescriptionForm.route,
+          indication: prescriptionForm.indication || prescriptionForm.diagnosis,
+          isAntibiotic: med.isAntibiotic
+        };
+      });
+
+      // Create a mock prescription object for PDF generation
+      const mockPrescription: Prescription = {
+        id: `RX-${Date.now()}`,
+        patientId: selectedPatient.id,
+        doctorId: doctor?.id || 'unknown',
+        doctorName: doctor?.name || 'Unknown Doctor',
+        medications: structuredMedications,
+        diagnosis: prescriptionForm.diagnosis,
+        symptoms: prescriptionForm.symptoms ? [prescriptionForm.symptoms] : [],
+        notes: prescriptionForm.notes,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+
+      const signatureData = digitalSignature ? {
+        doctorName: doctor?.name || 'Unknown Doctor',
+        licenseNumber: doctor?.licenseNumber || 'N/A',
+        signatureDate: new Date().toLocaleDateString(),
+        digitalCertificate: digitalSignature
+      } : undefined;
+
+      await PrescriptionPDFGenerator.generatePrescriptionPDF(
+        mockPrescription,
+        selectedPatient,
+        doctor!,
+        signatureData
+      );
+
+      alert('Prescription PDF generated successfully!');
+      setShowPrescriptionModal(false);
+      setPrescriptionForm({
+        diagnosis: '',
+        symptoms: '',
+        medications: [],
+        notes: '',
+        indication: '',
+        route: 'Oral',
+        frequency: '',
+        duration: ''
+      });
+      setDigitalSignature(null);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const exportAuditLogCSV = () => {
+    const csvContent = [
+      ['Date', 'Time', 'Action', 'Doctor', 'Details'],
+      ...auditLogs.map(log => [
+        new Date(log.eventTime).toLocaleDateString(),
+        new Date(log.eventTime).toLocaleTimeString(),
+        log.action,
+        log.doctorName || 'N/A',
+        log.details
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit_log_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
+  // Render functions
+  const renderOverview = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-blue-100 p-3 rounded-full mr-4">
+          <Users className="h-6 w-6 text-blue-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Total Patients</p>
+          <p className="text-2xl font-bold">{patients.length}</p>
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-green-100 p-3 rounded-full mr-4">
+          <Pill className="h-6 w-6 text-green-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Prescriptions Today</p>
+          <p className="text-2xl font-bold">{prescriptions.length}</p>
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-yellow-100 p-3 rounded-full mr-4">
+          <ShieldCheck className="h-6 w-6 text-yellow-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Compliance Rate</p>
+          <p className="text-2xl font-bold">92%</p>
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-red-100 p-3 rounded-full mr-4">
+          <AlertTriangle className="h-6 w-6 text-red-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-600">Resistance Alerts</p>
+          <p className="text-2xl font-bold">0</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPatients = () => (
+    <div>
+      {/* Filter Buttons */}
+      <div className="mb-6 flex gap-3">
+        <button
+          onClick={() => setPatientFilter('all')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            patientFilter === 'all' 
+              ? 'bg-blue-600 text-white' 
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <Users className="h-4 w-4 inline mr-2" />
+          All Patients ({patients.length})
+        </button>
+        <button
+          onClick={() => setPatientFilter('critical')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            patientFilter === 'critical' 
+              ? 'bg-red-600 text-white' 
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <AlertTriangle className="h-4 w-4 inline mr-2" />
+          Critical
+        </button>
+        <button
+          onClick={() => setPatientFilter('follow-up')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            patientFilter === 'follow-up' 
+              ? 'bg-yellow-600 text-white' 
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <Calendar className="h-4 w-4 inline mr-2" />
+          Follow-up
+        </button>
+        <button
+          onClick={() => setPatientFilter('recent')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            patientFilter === 'recent' 
+              ? 'bg-green-600 text-white' 
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <History className="h-4 w-4 inline mr-2" />
+          Recent Visits
+        </button>
+      </div>
+
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search patients..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border rounded-lg"
+          />
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {getFilteredPatients().map(patient => {
+          const status = getPatientStatus(patient);
+          const notesCount = patientNotes[patient.id]?.length || 0;
+          const visitsCount = patientVisits[patient.id]?.length || 0;
+          
+          return (
+            <div 
+              key={patient.id} 
+              className={`bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-l-4 ${
+                status === 'critical' ? 'border-red-500' : 
+                status === 'follow-up' ? 'border-yellow-500' : 
+                'border-blue-500'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <div className={`p-3 rounded-full mr-3 ${
+                    status === 'critical' ? 'bg-red-100' : 
+                    status === 'follow-up' ? 'bg-yellow-100' : 
+                    'bg-blue-100'
+                  }`}>
+                    <User className={`h-6 w-6 ${
+                      status === 'critical' ? 'text-red-600' : 
+                      status === 'follow-up' ? 'text-yellow-600' : 
+                      'text-blue-600'
+                    }`} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">{patient.name}</h3>
+                    <p className="text-sm text-gray-500">{patient.age} years • {patient.gender}</p>
+                  </div>
+                </div>
+                {status === 'critical' && (
+                  <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full">
+                    CRITICAL
+                  </span>
+                )}
+              </div>
+              
+              <div className="space-y-2 text-sm mb-4">
+                <div className="flex items-center text-gray-600">
+                  <Mail className="h-4 w-4 mr-2" />
+                  <span>{patient.email}</span>
+                </div>
+                <div className="flex items-center text-gray-600">
+                  <Phone className="h-4 w-4 mr-2" />
+                  <span>{patient.phoneNumber}</span>
+                </div>
+                {patient.vitals && (
+                  <div className="flex items-center text-gray-600">
+                    <Heart className="h-4 w-4 mr-2" />
+                    <span>BP: {patient.vitals.bloodPressure} | HR: {patient.vitals.heartRate}</span>
+                  </div>
+                )}
+                
+                {/* Patient Stats */}
+                <div className="flex items-center gap-4 pt-2 border-t mt-2">
+                  <div className="flex items-center text-xs text-gray-600">
+                    <ClipboardList className="h-3 w-3 mr-1" />
+                    {notesCount} notes
+                  </div>
+                  <div className="flex items-center text-xs text-gray-600">
+                    <Activity className="h-3 w-3 mr-1" />
+                    {visitsCount} visits
+                  </div>
+                </div>
+              </div>
+              
+              {patient.allergies && patient.allergies.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-red-600 mb-1">Allergies:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {patient.allergies.map((allergy, idx) => (
+                      <span key={idx} className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                        {allergy}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Quick Action Buttons */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    setShowPatientProfileModal(true);
+                  }}
+                  className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 flex items-center justify-center"
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  Profile
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    setShowPrescriptionModal(true);
+                  }}
+                  className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 flex items-center justify-center"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Prescribe
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    setShowPatientNotesModal(true);
+                  }}
+                  className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 flex items-center justify-center"
+                >
+                  <ClipboardList className="h-4 w-4 mr-1" />
+                  Add Note
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    setShowVitalsModal(true);
+                  }}
+                  className="px-3 py-2 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 flex items-center justify-center"
+                >
+                  <Activity className="h-4 w-4 mr-1" />
+                  Vitals
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    setShowAppointmentModal(true);
+                  }}
+                  className="px-3 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 flex items-center justify-center"
+                >
+                  <Calendar className="h-4 w-4 mr-1" />
+                  Schedule
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    setShowVisitHistoryModal(true);
+                  }}
+                  className="px-3 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 flex items-center justify-center"
+                >
+                  <History className="h-4 w-4 mr-1" />
+                  History
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      
+      {getFilteredPatients().length === 0 && (
+        <div className="text-center py-12 bg-white rounded-lg shadow">
+          <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600 text-lg font-medium">No patients found</p>
+          <p className="text-gray-400 text-sm mt-2">Try adjusting your filters or search term</p>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'overview':
+        return renderOverview();
+      case 'patients':
+        return renderPatients();
+      case 'antibiotic-tracking':
+        return (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">Antibiotic Usage Tracking</h3>
+                <div className="flex items-center space-x-2">
+                  <ShieldCheck className="h-5 w-5 text-green-600" />
+                  <span className="text-sm text-gray-600">Compliance: 92%</span>
+                </div>
+              </div>
+              <p className="text-gray-600 mb-6">Monitor antibiotic prescriptions and track resistance patterns.</p>
+              
+              {/* Statistics Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-600 font-medium">Active Prescriptions</p>
+                      <p className="text-2xl font-bold text-blue-900">8</p>
+                    </div>
+                    <Pill className="h-8 w-8 text-blue-600" />
+                  </div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-green-600 font-medium">Completed This Month</p>
+                      <p className="text-2xl font-bold text-green-900">24</p>
+                    </div>
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-yellow-600 font-medium">Follow-up Required</p>
+                      <p className="text-2xl font-bold text-yellow-900">3</p>
+                    </div>
+                    <AlertTriangle className="h-8 w-8 text-yellow-600" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Antibiotic Prescriptions */}
+              <div className="space-y-3">
+                <h4 className="font-semibold text-gray-800 mb-3">Active Antibiotic Prescriptions</h4>
+                {prescriptions.length > 0 ? (
+                  prescriptions.map(presc => (
+                    <div key={presc.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {patients.find(p => p.id === presc.patientId)?.name || 'Unknown Patient'}
+                          </p>
+                          <p className="text-sm text-gray-600">{presc.diagnosis}</p>
+                          <div className="mt-2 space-y-1">
+                            {presc.medications.filter(m => m.isAntibiotic).map((med, idx) => (
+                              <div key={idx} className="flex items-center text-sm">
+                                <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs mr-2">
+                                  Antibiotic
+                                </span>
+                                <span className="text-gray-800">{med.medication.name} - {med.dosage}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            presc.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            presc.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            presc.status === 'dispensed' ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {presc.status}
+                          </span>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {new Date(presc.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg">
+                    <Pill className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-500">No active antibiotic prescriptions</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Resistance Alerts */}
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
+                <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+                Resistance Alerts
+              </h4>
+              <p className="text-sm text-gray-600">No resistance patterns detected in your prescriptions.</p>
+            </div>
+          </div>
+        );
+      case 'analytics':
+        return (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">Analytics Dashboard</h3>
+              
+              {/* Key Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-lg text-white">
+                  <p className="text-sm opacity-90">Total Prescriptions</p>
+                  <p className="text-3xl font-bold mt-1">127</p>
+                  <p className="text-xs mt-2 opacity-75">↑ 12% from last month</p>
+                </div>
+                <div className="bg-gradient-to-br from-green-500 to-green-600 p-4 rounded-lg text-white">
+                  <p className="text-sm opacity-90">Avg Response Time</p>
+                  <p className="text-3xl font-bold mt-1">4.2h</p>
+                  <p className="text-xs mt-2 opacity-75">↓ 8% improvement</p>
+                </div>
+                <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4 rounded-lg text-white">
+                  <p className="text-sm opacity-90">Patient Satisfaction</p>
+                  <p className="text-3xl font-bold mt-1">4.8</p>
+                  <p className="text-xs mt-2 opacity-75">Out of 5.0 stars</p>
+                </div>
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4 rounded-lg text-white">
+                  <p className="text-sm opacity-90">Antibiotic Usage</p>
+                  <p className="text-3xl font-bold mt-1">18%</p>
+                  <p className="text-xs mt-2 opacity-75">Within guidelines</p>
+                </div>
+              </div>
+
+              {/* Charts Placeholder */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="border rounded-lg p-6 bg-gray-50">
+                  <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
+                    <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+                    Prescription Trends
+                  </h4>
+                  <div className="h-64 flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                      <p>Chart visualization coming soon</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="border rounded-lg p-6 bg-gray-50">
+                  <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
+                    <Activity className="h-5 w-5 mr-2 text-green-600" />
+                    Medication Categories
+                  </h4>
+                  <div className="h-64 flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <BarChart className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                      <p>Distribution chart coming soon</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      case 'audit-log':
+        return (
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Daily Audit Log</h3>
+                <p className="text-sm text-gray-600 mt-1">Track all prescription activities and changes</p>
+              </div>
+              <button 
+                onClick={exportAuditLogCSV}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center hover:bg-blue-700 transition-colors"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export CSV
+              </button>
+            </div>
+            
+            {auditLogs.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date/Time</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {auditLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(log.eventTime).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {log.doctorName || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {log.details || 'No additional details'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-gray-50 rounded-lg">
+                <History className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500">No audit logs available yet.</p>
+                <p className="text-sm text-gray-400 mt-1">Activities will be tracked and displayed here.</p>
+              </div>
+            )}
+          </div>
+        );
+      case 'performance':
+        return (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Performance Metrics</h3>
+                  <p className="text-sm text-gray-600 mt-1">Track your performance and compliance</p>
+                </div>
+                <Award className="h-8 w-8 text-yellow-500" />
+              </div>
+
+              {/* Performance Score */}
+              <div className="mb-8 p-6 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg text-white">
+                <p className="text-sm opacity-90">Overall Performance Score</p>
+                <div className="flex items-baseline mt-2">
+                  <p className="text-5xl font-bold">94</p>
+                  <p className="text-2xl ml-2">/100</p>
+                </div>
+                <div className="mt-4 bg-white bg-opacity-20 rounded-full h-3 overflow-hidden">
+                  <div className="bg-white h-full rounded-full" style={{ width: '94%' }}></div>
+                </div>
+              </div>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="border rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-600">Prescription Accuracy</p>
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">98%</p>
+                  <div className="mt-2 flex items-center text-xs text-green-600">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    <span>+2% from last month</span>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-600">Antibiotic Stewardship</p>
+                    <ShieldCheck className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">92%</p>
+                  <div className="mt-2 flex items-center text-xs text-blue-600">
+                    <span>Guideline adherence</span>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-600">Patient Follow-ups</p>
+                    <Users className="h-5 w-5 text-purple-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">87%</p>
+                  <div className="mt-2 flex items-center text-xs text-gray-600">
+                    <span>On-time completion rate</span>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-600">Avg Response Time</p>
+                    <Activity className="h-5 w-5 text-orange-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">4.2h</p>
+                  <div className="mt-2 flex items-center text-xs text-green-600">
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                    <span>Improved by 45min</span>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-600">Patient Satisfaction</p>
+                    <Heart className="h-5 w-5 text-red-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">4.8</p>
+                  <div className="mt-2 flex items-center text-xs text-yellow-600">
+                    <span>⭐ Out of 5.0 stars</span>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-600">Documentation Score</p>
+                    <FileText className="h-5 w-5 text-indigo-500" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">96%</p>
+                  <div className="mt-2 flex items-center text-xs text-indigo-600">
+                    <span>Complete & timely</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Achievements */}
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
+                <Award className="h-5 w-5 text-yellow-500 mr-2" />
+                Recent Achievements
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center p-4 bg-yellow-50 rounded-lg">
+                  <Award className="h-8 w-8 text-yellow-600 mr-3" />
+                  <div>
+                    <p className="font-semibold text-gray-900">Antibiotic Guardian</p>
+                    <p className="text-xs text-gray-600">90% stewardship compliance for 3 months</p>
+                  </div>
+                </div>
+                <div className="flex items-center p-4 bg-blue-50 rounded-lg">
+                  <ShieldCheck className="h-8 w-8 text-blue-600 mr-3" />
+                  <div>
+                    <p className="font-semibold text-gray-900">Quality Champion</p>
+                    <p className="text-xs text-gray-600">Zero prescription errors this quarter</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      default:
+        return renderOverview();
+    }
+  };
+
+  // Simple dashboard render
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar */}
+      <div className="w-64 bg-gray-800 text-white flex flex-col">
+        <div className="px-6 py-4 border-b border-gray-700">
+          <h2 className="text-xl font-semibold">AMS Dashboard</h2>
+          <p className="text-sm text-gray-400">Dr. {doctor?.name || 'Unknown'}</p>
+        </div>
+        <nav className="flex-1 px-4 py-4 space-y-2">
+          <button onClick={() => setActiveTab('overview')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'overview' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}>
+            <LayoutDashboard className="mr-3 h-5 w-5" /> Overview
+          </button>
+          <button onClick={() => setActiveTab('patients')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'patients' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}>
+            <Users className="mr-3 h-5 w-5" /> Patients
+          </button>
+          <button onClick={() => setActiveTab('antibiotic-tracking')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'antibiotic-tracking' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}>
+            <Pill className="mr-3 h-5 w-5" /> Antibiotic Tracking
+          </button>
+          <button onClick={() => setActiveTab('analytics')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'analytics' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}>
+            <BarChart className="mr-3 h-5 w-5" /> Analytics
+          </button>
+          <button onClick={() => setActiveTab('audit-log')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'audit-log' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}>
+            <FileText className="mr-3 h-5 w-5" /> Audit Log
+          </button>
+          <button onClick={() => setActiveTab('performance')} className={`w-full text-left flex items-center px-4 py-2 rounded-md ${activeTab === 'performance' ? 'bg-gray-700' : 'hover:bg-gray-700'}`}>
+            <Award className="mr-3 h-5 w-5" /> Performance
+          </button>
+        </nav>
+        <div className="px-6 py-4 border-t border-gray-700">
+          <button onClick={logout} className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">
+            <LogOut className="mr-2 h-4 w-4" /> Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+            <h1 className="text-2xl font-bold text-gray-900 capitalize">{activeTab.replace('-', ' ')}</h1>
+            <div className="flex items-center space-x-4">
+              <button onClick={() => setShowNotifications(!showNotifications)} className="relative">
+                <Bell className="h-6 w-6 text-gray-500" />
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full"></span>
+                )}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto bg-gray-100 p-6">
+          {renderContent()}
+        </main>
+      </div>
+
+      {/* Prescription Modal */}
+      {showPrescriptionModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-800">Create Prescription for {selectedPatient.name}</h2>
+              <button onClick={() => setShowPrescriptionModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Diagnosis and Symptoms */}
+              <div>
+                <div className="mb-4">
+                  <label htmlFor="diagnosis" className="block text-sm font-medium text-gray-700 mb-1">Diagnosis</label>
+                  <input 
+                    type="text" 
+                    id="diagnosis" 
+                    value={prescriptionForm.diagnosis} 
+                    onChange={e => setPrescriptionForm({...prescriptionForm, diagnosis: e.target.value})} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" 
+                  />
+                </div>
+                <div className="mb-4">
+                  <label htmlFor="symptoms" className="block text-sm font-medium text-gray-700 mb-1">Symptoms</label>
+                  <textarea 
+                    id="symptoms" 
+                    value={prescriptionForm.symptoms} 
+                    onChange={e => setPrescriptionForm({...prescriptionForm, symptoms: e.target.value})} 
+                    rows={3} 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  ></textarea>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="frequency" className="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
+                    <input 
+                      type="text" 
+                      id="frequency" 
+                      value={prescriptionForm.frequency} 
+                      onChange={e => setPrescriptionForm({...prescriptionForm, frequency: e.target.value})} 
+                      placeholder="e.g., 3 times daily"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm" 
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                    <input 
+                      type="text" 
+                      id="duration" 
+                      value={prescriptionForm.duration} 
+                      onChange={e => setPrescriptionForm({...prescriptionForm, duration: e.target.value})} 
+                      placeholder="e.g., 7 days"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Medication Selection */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Select Medications</h3>
+                <div className="max-h-48 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                  {availableMedications.map(med => (
+                    <div key={med.id} className="flex items-center justify-between p-2 hover:bg-gray-100 rounded-md">
+                      <div>
+                        <p className="font-semibold">{med.name}</p>
+                        {med.type === 'antibiotic' && <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">Antibiotic</span>}
+                      </div>
+                      <div className="flex items-center">
+                        <input 
+                          type="number" 
+                          min="1"
+                          placeholder="Qty"
+                          className="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          onChange={(e) => setMedicationQuantities(prev => ({...prev, [med.id]: parseInt(e.target.value)}))}
+                        />
+                        <button 
+                          onClick={() => addMedicationToPrescription(med, medicationQuantities[med.id] || 1)} 
+                          className="ml-2 px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Selected Medications */}
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-gray-800 mb-2">Prescribed Medications</h3>
+              {prescriptionForm.medications.length > 0 ? (
+                <ul className="border rounded-md divide-y">
+                  {prescriptionForm.medications.map(med => (
+                    <li key={med.medicationId} className="p-3 flex justify-between items-center">
+                      <div>
+                        <p className="font-semibold">{med.medicationName} <span className="text-sm text-gray-500">{med.dosage}</span></p>
+                        <p className="text-sm text-gray-600">Quantity: {med.quantity}</p>
+                      </div>
+                      <button onClick={() => removeMedicationFromPrescription(med.medicationId)} className="text-red-500 hover:text-red-700">
+                        <XCircle className="h-5 w-5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-md">No medications added yet.</p>}
+            </div>
+
+            {/* Doctor's Notes */}
+            <div className="mt-6">
+              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">Doctor's Notes (Optional)</label>
+              <textarea 
+                id="notes" 
+                value={prescriptionForm.notes} 
+                onChange={e => setPrescriptionForm({...prescriptionForm, notes: e.target.value})} 
+                rows={3} 
+                placeholder="Add any special instructions or notes for the patient..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              ></textarea>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="mt-8 flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                <button 
+                  onClick={handleCaptureSignature}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center"
+                >
+                  <PenTool className="h-4 w-4 mr-2" />
+                  {digitalSignature ? 'Update Signature' : 'Add Signature'}
+                </button>
+                {digitalSignature && (
+                  <span className="text-sm text-green-600 flex items-center">
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    Signature captured
+                  </span>
+                )}
+              </div>
+              <div className="flex space-x-3">
+                <button 
+                  onClick={() => setShowPrescriptionModal(false)} 
+                  className="px-6 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleGeneratePDF}
+                  disabled={prescriptionForm.medications.length === 0 || isGeneratingPDF}
+                  className="px-6 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:bg-green-300 flex items-center"
+                >
+                  {isGeneratingPDF ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Generate PDF
+                    </>
+                  )}
+                </button>
+                <button 
+                  onClick={() => {
+                    alert('Prescription saved successfully!');
+                    setShowPrescriptionModal(false);
+                    setPrescriptionForm({
+                      diagnosis: '',
+                      symptoms: '',
+                      medications: [],
+                      notes: '',
+                      indication: '',
+                      route: 'Oral',
+                      frequency: '',
+                      duration: ''
+                    });
+                  }} 
+                  disabled={prescriptionForm.medications.length === 0}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:bg-blue-300 flex items-center"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Save Prescription
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Patient Profile Modal */}
+      {showPatientProfileModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-800">Patient Profile</h2>
+              <button onClick={() => setShowPatientProfileModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <div className="bg-blue-100 p-4 rounded-full mr-4">
+                  <User className="h-8 w-8 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-semibold">{selectedPatient.name}</h3>
+                  <p className="text-gray-600">{selectedPatient.age} years • {selectedPatient.gender}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-6">
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">Email</p>
+                  <p className="text-gray-900">{selectedPatient.email}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">Phone</p>
+                  <p className="text-gray-900">{selectedPatient.phoneNumber}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">Age</p>
+                  <p className="text-gray-900">{selectedPatient.age} years</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">Gender</p>
+                  <p className="text-gray-900 capitalize">{selectedPatient.gender}</p>
+                </div>
+              </div>
+
+              {selectedPatient.vitals && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Latest Vitals</p>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-gray-600">Blood Pressure</p>
+                      <p className="font-semibold">{selectedPatient.vitals.bloodPressure}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Heart Rate</p>
+                      <p className="font-semibold">{selectedPatient.vitals.heartRate} bpm</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Weight</p>
+                      <p className="font-semibold">{selectedPatient.vitals.weight} lbs</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedPatient.allergies && selectedPatient.allergies.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-semibold text-gray-600 mb-2">Allergies</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedPatient.allergies.map((allergy, idx) => (
+                      <span key={idx} className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm">
+                        {allergy}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedPatient.medicalHistory && selectedPatient.medicalHistory.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-semibold text-gray-600 mb-2">Medical History</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {selectedPatient.medicalHistory.map((condition, idx) => (
+                      <li key={idx} className="text-gray-900">{condition}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="mt-6 flex gap-3">
+                <button 
+                  onClick={() => {
+                    setShowPatientProfileModal(false);
+                    setShowPrescriptionModal(true);
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Create Prescription
+                </button>
+                <button 
+                  onClick={() => setShowPatientProfileModal(false)} 
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Digital Signature Modal */}
+      {showSignatureModal && doctor && (
+        <DigitalSignatureCapture
+          onSignatureCapture={handleSignatureSave}
+          onClose={() => setShowSignatureModal(false)}
+          doctorName={doctor.name}
+          licenseNumber={doctor.licenseNumber}
+        />
+      )}
+
+      {/* Patient Notes Modal */}
+      {showPatientNotesModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Clinical Notes - {selectedPatient.name}</h2>
+              <button onClick={() => setShowPatientNotesModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Add New Note */}
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Add New Note</label>
+              <textarea
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                rows={4}
+                placeholder="Enter clinical observations, diagnosis updates, or treatment notes..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+              <button
+                onClick={handleAddNote}
+                disabled={!newNote.trim()}
+                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 flex items-center"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Note
+              </button>
+            </div>
+
+            {/* Existing Notes */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Previous Notes</h3>
+              {patientNotes[selectedPatient.id]?.length > 0 ? (
+                <div className="space-y-3">
+                  {[...patientNotes[selectedPatient.id]].reverse().map(note => (
+                    <div key={note.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-sm font-medium text-blue-600">{note.doctor}</span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(note.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-gray-900">{note.content}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-gray-50 rounded-lg">
+                  <ClipboardList className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-500">No notes recorded yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vitals Recording Modal */}
+      {showVitalsModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Record Vitals - {selectedPatient.name}</h2>
+              <button onClick={() => setShowVitalsModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Blood Pressure</label>
+                <input
+                  type="text"
+                  value={newVitals.bloodPressure}
+                  onChange={(e) => setNewVitals({...newVitals, bloodPressure: e.target.value})}
+                  placeholder="120/80"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Heart Rate (bpm)</label>
+                <input
+                  type="text"
+                  value={newVitals.heartRate}
+                  onChange={(e) => setNewVitals({...newVitals, heartRate: e.target.value})}
+                  placeholder="75"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Temperature (°F)</label>
+                <input
+                  type="text"
+                  value={newVitals.temperature}
+                  onChange={(e) => setNewVitals({...newVitals, temperature: e.target.value})}
+                  placeholder="98.6"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Weight (lbs)</label>
+                <input
+                  type="text"
+                  value={newVitals.weight}
+                  onChange={(e) => setNewVitals({...newVitals, weight: e.target.value})}
+                  placeholder="150"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Height (inches)</label>
+                <input
+                  type="text"
+                  value={newVitals.height}
+                  onChange={(e) => setNewVitals({...newVitals, height: e.target.value})}
+                  placeholder="65"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Oxygen Saturation (%)</label>
+                <input
+                  type="text"
+                  value={newVitals.oxygenSaturation}
+                  onChange={(e) => setNewVitals({...newVitals, oxygenSaturation: e.target.value})}
+                  placeholder="98"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Respiratory Rate</label>
+                <input
+                  type="text"
+                  value={newVitals.respiratoryRate}
+                  onChange={(e) => setNewVitals({...newVitals, respiratoryRate: e.target.value})}
+                  placeholder="16"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3 justify-end">
+              <button
+                onClick={() => setShowVitalsModal(false)}
+                className="px-6 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRecordVitals}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save Vitals
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Appointment Scheduling Modal */}
+      {showAppointmentModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Schedule Appointment</h2>
+              <button onClick={() => setShowAppointmentModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Patient</label>
+                <input
+                  type="text"
+                  value={selectedPatient.name}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  id="appointment-date"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                <input
+                  type="time"
+                  id="appointment-time"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+                <textarea
+                  id="appointment-reason"
+                  rows={3}
+                  placeholder="Follow-up, check-up, lab results review, etc."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowAppointmentModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const date = (document.getElementById('appointment-date') as HTMLInputElement).value;
+                  const time = (document.getElementById('appointment-time') as HTMLInputElement).value;
+                  const reason = (document.getElementById('appointment-reason') as HTMLTextAreaElement).value;
+                  
+                  if (date && time) {
+                    handleScheduleAppointment({ date, time, reason });
+                  } else {
+                    alert('Please fill in date and time');
+                  }
+                }}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visit History Modal */}
+      {showVisitHistoryModal && selectedPatient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Visit History - {selectedPatient.name}</h2>
+              <button onClick={() => setShowVisitHistoryModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Patient Timeline */}
+            <div className="space-y-6">
+              {/* Upcoming Appointments */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                  <Calendar className="h-5 w-5 mr-2 text-blue-600" />
+                  Upcoming Appointments
+                </h3>
+                {appointments.filter(a => a.patientId === selectedPatient.id).length > 0 ? (
+                  <div className="space-y-2">
+                    {appointments.filter(a => a.patientId === selectedPatient.id).map(apt => (
+                      <div key={apt.id} className="border rounded-lg p-4 bg-blue-50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-gray-900">{apt.reason || 'General Check-up'}</p>
+                            <p className="text-sm text-gray-600">
+                              {new Date(apt.date).toLocaleDateString()} at {apt.time}
+                            </p>
+                          </div>
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+                            {apt.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center">
+                    No upcoming appointments
+                  </p>
+                )}
+              </div>
+
+              {/* Visit Records */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                  <Activity className="h-5 w-5 mr-2 text-green-600" />
+                  Vitals Records
+                </h3>
+                {patientVisits[selectedPatient.id]?.length > 0 ? (
+                  <div className="space-y-3">
+                    {[...patientVisits[selectedPatient.id]].reverse().map(visit => (
+                      <div key={visit.id} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex justify-between items-start mb-3">
+                          <span className="text-sm font-medium text-green-600">{visit.recordedBy}</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(visit.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                          {visit.bloodPressure && (
+                            <div>
+                              <p className="text-gray-600">BP</p>
+                              <p className="font-semibold">{visit.bloodPressure}</p>
+                            </div>
+                          )}
+                          {visit.heartRate && (
+                            <div>
+                              <p className="text-gray-600">HR</p>
+                              <p className="font-semibold">{visit.heartRate} bpm</p>
+                            </div>
+                          )}
+                          {visit.temperature && (
+                            <div>
+                              <p className="text-gray-600">Temp</p>
+                              <p className="font-semibold">{visit.temperature}°F</p>
+                            </div>
+                          )}
+                          {visit.oxygenSaturation && (
+                            <div>
+                              <p className="text-gray-600">SpO2</p>
+                              <p className="font-semibold">{visit.oxygenSaturation}%</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center">
+                    No vitals recorded yet
+                  </p>
+                )}
+              </div>
+
+              {/* Clinical Notes */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                  <ClipboardList className="h-5 w-5 mr-2 text-purple-600" />
+                  Clinical Notes
+                </h3>
+                {patientNotes[selectedPatient.id]?.length > 0 ? (
+                  <div className="space-y-2">
+                    {[...patientNotes[selectedPatient.id]].reverse().slice(0, 5).map(note => (
+                      <div key={note.id} className="border rounded-lg p-3 bg-purple-50">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-xs font-medium text-purple-600">{note.doctor}</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(note.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-900">{note.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 py-4 bg-gray-50 rounded-lg text-center">
+                    No clinical notes recorded
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DoctorDashboard;
