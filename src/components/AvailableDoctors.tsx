@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { Doctor } from '../types';
+import VideoCallModal from './VideoCallModal';
+import ChatModal from './ChatModal';
 
 const AvailableDoctors: React.FC = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -27,6 +29,9 @@ const AvailableDoctors: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'busy'>('online');
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const [showVoiceCall, setShowVoiceCall] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     fetchDoctors();
@@ -58,14 +63,14 @@ const AvailableDoctors: React.FC = () => {
       filtered = filtered.filter(doc => doc.onlineStatus === statusFilter);
     } else {
       // Show online and busy doctors
-      filtered = filtered.filter(doc => 
+      filtered = filtered.filter(doc =>
         doc.onlineStatus === 'online' || doc.onlineStatus === 'busy'
       );
     }
 
     // Specialty filter
     if (specialtyFilter !== 'all') {
-      filtered = filtered.filter(doc => 
+      filtered = filtered.filter(doc =>
         doc.specialty.toLowerCase() === specialtyFilter.toLowerCase()
       );
     }
@@ -123,6 +128,21 @@ const AvailableDoctors: React.FC = () => {
   const handleContactDoctor = (doctor: Doctor) => {
     setSelectedDoctor(doctor);
     setShowContactModal(true);
+  };
+
+  const handleVideoCall = (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setShowVideoCall(true);
+  };
+
+  const handleVoiceCall = (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setShowVoiceCall(true);
+  };
+
+  const handleChat = (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setShowChat(true);
   };
 
   if (loading) {
@@ -184,33 +204,30 @@ const AvailableDoctors: React.FC = () => {
           <div className="flex gap-2">
             <button
               onClick={() => setStatusFilter('online')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === 'online'
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${statusFilter === 'online'
                   ? 'bg-green-600 text-white'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <CheckCircle className="h-4 w-4 inline mr-1" />
               Available
             </button>
             <button
               onClick={() => setStatusFilter('busy')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === 'busy'
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${statusFilter === 'busy'
                   ? 'bg-yellow-600 text-white'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <AlertCircle className="h-4 w-4 inline mr-1" />
               Busy
             </button>
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                statusFilter === 'all'
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${statusFilter === 'all'
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
+                }`}
             >
               All Active
             </button>
@@ -235,23 +252,20 @@ const AvailableDoctors: React.FC = () => {
         {filteredDoctors.map(doctor => (
           <div
             key={doctor.id}
-            className={`bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-all border-l-4 ${
-              doctor.onlineStatus === 'online'
+            className={`bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-all border-l-4 ${doctor.onlineStatus === 'online'
                 ? 'border-green-500'
                 : doctor.onlineStatus === 'busy'
-                ? 'border-yellow-500'
-                : 'border-gray-300'
-            }`}
+                  ? 'border-yellow-500'
+                  : 'border-gray-300'
+              }`}
           >
             {/* Doctor Header */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className={`p-3 rounded-full ${
-                  doctor.onlineStatus === 'online' ? 'bg-green-100' : 'bg-yellow-100'
-                }`}>
-                  <User className={`h-8 w-8 ${
-                    doctor.onlineStatus === 'online' ? 'text-green-600' : 'text-yellow-600'
-                  }`} />
+                <div className={`p-3 rounded-full ${doctor.onlineStatus === 'online' ? 'bg-green-100' : 'bg-yellow-100'
+                  }`}>
+                  <User className={`h-8 w-8 ${doctor.onlineStatus === 'online' ? 'text-green-600' : 'text-yellow-600'
+                    }`} />
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">{doctor.name}</h3>
@@ -269,21 +283,21 @@ const AvailableDoctors: React.FC = () => {
                   <span>{doctor.department}</span>
                 </div>
               )}
-              
+
               {doctor.experience && (
                 <div className="flex items-center text-sm text-gray-600">
                   <Clock className="h-4 w-4 mr-2 text-gray-400" />
                   <span>{doctor.experience} experience</span>
                 </div>
               )}
-              
+
               {doctor.consultationFee && (
                 <div className="flex items-center text-sm text-gray-600">
                   <DollarSign className="h-4 w-4 mr-2 text-gray-400" />
                   <span>${doctor.consultationFee} consultation fee</span>
                 </div>
               )}
-              
+
               {doctor.rating && (
                 <div className="flex items-center text-sm">
                   <Star className="h-4 w-4 mr-1 text-yellow-500 fill-yellow-500" />
@@ -298,18 +312,24 @@ const AvailableDoctors: React.FC = () => {
               {doctor.onlineStatus === 'online' ? (
                 <>
                   <button
-                    onClick={() => handleContactDoctor(doctor)}
+                    onClick={() => handleChat(doctor)}
                     className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
                   >
                     <MessageCircle className="h-4 w-4" />
                     Contact Now
                   </button>
                   <div className="grid grid-cols-2 gap-2">
-                    <button className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center justify-center gap-1 text-sm">
+                    <button
+                      onClick={() => handleVideoCall(doctor)}
+                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center justify-center gap-1 text-sm transition-colors"
+                    >
                       <Video className="h-4 w-4" />
                       Video Call
                     </button>
-                    <button className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center justify-center gap-1 text-sm">
+                    <button
+                      onClick={() => handleVoiceCall(doctor)}
+                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center justify-center gap-1 text-sm transition-colors"
+                    >
                       <Phone className="h-4 w-4" />
                       Voice Call
                     </button>
@@ -380,15 +400,33 @@ const AvailableDoctors: React.FC = () => {
               <div className="p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-900 font-medium mb-2">Choose your consultation method:</p>
                 <div className="space-y-2">
-                  <button className="w-full px-4 py-3 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowContactModal(false);
+                      handleChat(selectedDoctor);
+                    }}
+                    className="w-full px-4 py-3 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 flex items-center gap-3"
+                  >
                     <MessageCircle className="h-5 w-5" />
                     <span className="font-medium">Start Chat Consultation</span>
                   </button>
-                  <button className="w-full px-4 py-3 bg-white border-2 border-green-600 text-green-600 rounded-lg hover:bg-green-50 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowContactModal(false);
+                      handleVideoCall(selectedDoctor);
+                    }}
+                    className="w-full px-4 py-3 bg-white border-2 border-green-600 text-green-600 rounded-lg hover:bg-green-50 flex items-center gap-3"
+                  >
                     <Video className="h-5 w-5" />
                     <span className="font-medium">Video Call Consultation</span>
                   </button>
-                  <button className="w-full px-4 py-3 bg-white border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowContactModal(false);
+                      handleVoiceCall(selectedDoctor);
+                    }}
+                    className="w-full px-4 py-3 bg-white border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 flex items-center gap-3"
+                  >
                     <Phone className="h-5 w-5" />
                     <span className="font-medium">Voice Call Consultation</span>
                   </button>
@@ -404,6 +442,36 @@ const AvailableDoctors: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Video Call Modal */}
+      {showVideoCall && selectedDoctor && (
+        <VideoCallModal
+          isOpen={showVideoCall}
+          onClose={() => setShowVideoCall(false)}
+          doctorName={selectedDoctor.name}
+          callType="video"
+        />
+      )}
+
+      {/* Voice Call Modal */}
+      {showVoiceCall && selectedDoctor && (
+        <VideoCallModal
+          isOpen={showVoiceCall}
+          onClose={() => setShowVoiceCall(false)}
+          doctorName={selectedDoctor.name}
+          callType="audio"
+        />
+      )}
+
+      {/* Chat Modal */}
+      {showChat && selectedDoctor && (
+        <ChatModal
+          isOpen={showChat}
+          onClose={() => setShowChat(false)}
+          doctorId={selectedDoctor.id}
+          doctorName={selectedDoctor.name}
+        />
       )}
     </div>
   );

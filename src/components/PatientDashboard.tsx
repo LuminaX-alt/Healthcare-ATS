@@ -21,26 +21,91 @@ import {
   FileClock,
   Pill,
   UserCheck,
-  Stethoscope
+  Stethoscope,
+  Calendar,
+  TrendingUp,
+  Droplet,
+  Thermometer,
+  Wind,
+  Scale,
+  Clipboard,
+  Shield,
+  Upload,
+  Download,
+  Bell,
+  MessageSquare,
+  Video,
+  FileCheck,
+  AlertCircle
 } from 'lucide-react';
 import api from '../api';
 import AvailableDoctors from './AvailableDoctors';
+import useSocket from '../hooks/useSocket';
+
+interface DashboardStats {
+  upcomingAppointments: number;
+  activePrescriptions: number;
+  completedAppointments: number;
+  totalAppointments: number;
+  totalPrescriptions: number;
+  lastVisit: string | null;
+  profileComplete: boolean;
+}
+
+interface Appointment {
+  _id: string;
+  doctor: {
+    name: string;
+    specialty: string;
+  };
+  appointmentDate: string;
+  reason: string;
+  symptoms?: string;
+  status: string;
+  type: string;
+}
+
+interface VitalsData {
+  height?: number;
+  weight?: number;
+  bloodPressure?: string;
+  temperature?: number;
+  heartRate?: number;
+  respiratoryRate?: number;
+  oxygenSaturation?: number;
+  bloodSugar?: number;
+  bmi?: number;
+  lastUpdated?: string; // ISO string
+}
 
 const PatientDashboard: React.FC = () => {
   const { user, userProfile, logout, updateProfile } = useAuth();
   const patient = userProfile as Patient;
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'prescriptions' | 'cart' | 'orders' | 'profile' | 'doctors'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'appointments' | 'vitals' | 'prescriptions' | 'cart' | 'orders' | 'profile' | 'doctors' | 'medical-records'>('overview');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [vitalsData, setVitalsData] = useState<VitalsData>({});
+  const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState({
     name: patient?.name || '',
     email: patient?.email || '',
     age: patient?.age || 0,
     gender: patient?.gender || 'other',
+    bloodType: patient?.bloodType || '',
     address: patient?.address || '',
+    phone: patient?.phone || '',
     allergies: patient?.allergies?.join(', ') || '',
-    medicalHistory: patient?.medicalHistory?.join(', ') || ''
+    medicalHistory: patient?.medicalHistory?.join(', ') || '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    insuranceProvider: '',
+    insurancePolicyNumber: ''
   });
+
+  // Initialize socket and subscribe to patient room
+  const socketRef = useSocket(patient?.id);
 
   useEffect(() => {
     const fetchCart = async () => {
@@ -54,7 +119,89 @@ const PatientDashboard: React.FC = () => {
       }
     };
     fetchCart();
+    
+    // Fetch dashboard stats
+    const fetchDashboardStats = async () => {
+      if (patient?.id) {
+        try {
+          const { data } = await api.get(`/patients/${patient.id}/dashboard-stats`);
+          setDashboardStats(data);
+        } catch (error) {
+          console.error("Failed to fetch dashboard stats", error);
+        }
+      }
+    };
+    fetchDashboardStats();
+    
+    // Fetch appointments
+    const fetchAppointments = async () => {
+      if (patient?.id) {
+        try {
+          const { data } = await api.get(`/patients/${patient.id}/appointments`);
+          setAppointments(data);
+        } catch (error) {
+          console.error("Failed to fetch appointments", error);
+        }
+      }
+    };
+    fetchAppointments();
+    
+    // Set vitals data from patient
+    if (patient?.vitals) {
+      // Normalize lastUpdated to ISO string
+      const normalized = {
+        ...patient.vitals,
+        lastUpdated: patient.vitals.lastUpdated ? (typeof patient.vitals.lastUpdated === 'string' ? patient.vitals.lastUpdated : new Date(patient.vitals.lastUpdated).toISOString()) : undefined
+      } as VitalsData;
+      setVitalsData(normalized);
+    }
+    
+    // Real-time updates every 30 seconds
+    const interval = setInterval(() => {
+      fetchDashboardStats();
+      fetchAppointments();
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, [patient?.id]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    const onVitals = (payload: any) => {
+      if (payload?.vitals) {
+        setVitalsData(payload.vitals);
+      }
+    };
+
+    const onTimeline = (payload: any) => {
+      if (payload?.timeline) {
+        // Update local timeline by refetching patient or merging
+        // For simplicity, update patient.timeline in-place if available
+        // (In real app, you'd refetch patient data)
+        if (patient && payload.timeline) {
+          (patient as any).timeline = payload.timeline;
+        }
+      }
+    };
+
+    const onAppointment = (payload: any) => {
+      if (payload?.appointment) {
+        setAppointments((prev: Appointment[]) => [payload.appointment, ...prev]);
+      }
+    };
+
+    socket.on('patientVitalsUpdated', onVitals);
+    socket.on('patientTimelineUpdated', onTimeline);
+    socket.on('patientAppointmentCreated', onAppointment);
+
+    return () => {
+      socket.off('patientVitalsUpdated', onVitals);
+      socket.off('patientTimelineUpdated', onTimeline);
+      socket.off('patientAppointmentCreated', onAppointment);
+    };
+  }, [socketRef, patient?.id]);
 
   const prescriptions = patient?.prescriptions || [];
   const orders = patient?.orders || [];
@@ -73,14 +220,14 @@ const PatientDashboard: React.FC = () => {
 
     try {
       await api.post('/patient/cart/add', { patientId: patient.id, items: [newItem] });
-      setCart(prevCart => [...prevCart, newItem]);
+      setCart((prevCart: CartItem[]) => [...prevCart, newItem]);
     } catch (error) {
       console.error("Failed to add to cart", error);
     }
   };
 
   const updateCartItemQuantity = (medicationId: string, change: number) => {
-    const updatedCart = cart.map(item => {
+    const updatedCart = cart.map((item: CartItem) => {
       if (item.medicationId === medicationId) {
         const newQuantity = item.quantity + change;
         return newQuantity > 0 ? { ...item, quantity: newQuantity } : null;
@@ -120,13 +267,86 @@ const PatientDashboard: React.FC = () => {
     updateProfile(updatedPatient);
     alert('Profile updated successfully!');
   };
+  
+  const handleVitalsUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { data } = await api.put(`/patients/${patient.id}/vitals`, vitalsData);
+      if (data.success) {
+        setVitalsData(data.vitals);
+        alert('Vitals updated successfully!');
+      }
+    } catch (error) {
+      console.error("Failed to update vitals", error);
+      alert('Failed to update vitals. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const renderDashboardStats = () => {
+    if (!dashboardStats) return null;
+    
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 bg-blue-100 rounded-md p-3">
+              <Calendar className="h-6 w-6 text-blue-600" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">Upcoming Appointments</h3>
+              <p className="text-2xl font-semibold text-gray-900">{dashboardStats.upcomingAppointments}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 bg-green-100 rounded-md p-3">
+              <Pill className="h-6 w-6 text-green-600" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">Active Prescriptions</h3>
+              <p className="text-2xl font-semibold text-gray-900">{dashboardStats.activePrescriptions}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 bg-purple-100 rounded-md p-3">
+              <CheckCircle className="h-6 w-6 text-purple-600" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">Completed Visits</h3>
+              <p className="text-2xl font-semibold text-gray-900">{dashboardStats.completedAppointments}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 bg-yellow-100 rounded-md p-3">
+              <Activity className="h-6 w-6 text-yellow-600" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-sm font-medium text-gray-500">Health Score</h3>
+              <p className="text-2xl font-semibold text-gray-900">{dashboardStats.profileComplete ? '85%' : '45%'}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderOverview = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow">
         <h3 className="text-xl font-semibold mb-4 flex items-center"><FileClock className="mr-2" /> Medical Timeline</h3>
         <div className="space-y-4">
-          {timeline.map((event, index) => (
+          {timeline.map((event: any, index: number) => (
             <div key={index} className="flex items-start">
               <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-4">
                 {/* This needs to be fixed to render actual icons if they are strings */}
@@ -156,7 +376,7 @@ const PatientDashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-xl font-semibold mb-4 flex items-center"><AlertTriangle className="mr-2" /> Allergies</h3>
           <ul className="list-disc list-inside text-red-600">
-            {patient?.allergies?.map((allergy, i) => <li key={i}>{allergy}</li>)}
+            {patient?.allergies?.map((allergy: string, i: number) => <li key={i}>{allergy}</li>)}
             {patient?.allergies?.length === 0 && <li>No known allergies.</li>}
           </ul>
         </div>
@@ -179,13 +399,13 @@ const PatientDashboard: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {prescriptions.map(p => (
+            {prescriptions.map((p: any) => (
               <tr key={p.id}>
                 <td className="px-6 py-4 whitespace-nowrap">{new Date(p.createdAt).toLocaleDateString()}</td>
                 <td className="px-6 py-4 whitespace-nowrap">{p.doctorName}</td>
                 <td className="px-6 py-4 whitespace-nowrap">{p.diagnosis}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  {p.medications.map(m => m.medication.name).join(', ')}
+                  {p.medications.map((m: any) => m.medication.name).join(', ')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -197,7 +417,7 @@ const PatientDashboard: React.FC = () => {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  {p.status === 'pending' && p.medications.every(m => !cart.some(ci => ci.medicationId === m.medication.id)) &&
+                  {p.status === 'pending' && p.medications.every((m: any) => !cart.some(ci => ci.medicationId === m.medication.id)) &&
                     <button onClick={() => addToCart(p.medications[0].medication.id, p.medications[0].medication.name, p.medications[0].medication.price, p.id)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
                       Add to Cart
                     </button>
@@ -229,7 +449,7 @@ const PatientDashboard: React.FC = () => {
         <h3 className="text-2xl font-bold mb-6">Your Shopping Cart</h3>
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul role="list" className="divide-y divide-gray-200">
-            {cart.map((item) => (
+            {cart.map((item: CartItem) => (
               <li key={item.medicationId} className="px-4 py-4 sm:px-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -285,7 +505,7 @@ const PatientDashboard: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {orders.map(order => (
+            {orders.map((order: any) => (
               <tr key={order.id}>
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-sm">{order.id}</td>
                 <td className="px-6 py-4 whitespace-nowrap">{new Date(order.createdAt).toLocaleDateString()}</td>
@@ -307,7 +527,7 @@ const PatientDashboard: React.FC = () => {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {order.items.map(item => `${item.medicationName} (x${item.quantity})`).join(', ')}
+                  {order.items.map((item: CartItem) => `${item.medicationName} (x${item.quantity})`).join(', ')}
                 </td>
               </tr>
             ))}

@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: healthcare-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: healthcare_prototype
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - healthcare-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/healthcare_prototype --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # Backend + Frontend (Combined)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: healthcare-app
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+      - "3000:3000"
+    environment:
+      # MongoDB
+      MONGO_URI: mongodb://mongodb:27017/healthcare_prototype
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_change_in_production}
+      
+      # Server
+      PORT: 3001
+      NODE_ENV: production
+      
+      # Google Gemini AI
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      
+      # Twilio (Optional)
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+      TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID}
+      
+      # Stripe (Optional)
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      
+      # Claude AI (Optional)
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - healthcare-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx Reverse Proxy (Optional - for production)
+  nginx:
+    image: nginx:alpine
+    container_name: healthcare-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    networks:
+      - healthcare-network
+    profiles:
+      - production
+
+networks:
+  healthcare-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local

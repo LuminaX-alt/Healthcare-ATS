@@ -1,6 +1,6 @@
  import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Users, Activity, FileText } from 'lucide-react';
+import { Shield, Users, Activity, FileText, MessageCircle } from 'lucide-react';
 
 const HomePage: React.FC = () => {
   return (
@@ -51,10 +51,51 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
+        {/* Video Section */}
+        <div className="max-w-5xl mx-auto mb-16">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-8 text-center">
+              <h2 className="text-3xl font-bold text-white mb-3">
+                See LuminaX-alt in Action
+              </h2>
+              <p className="text-blue-100 text-lg mb-8">
+                Watch how our platform streamlines healthcare management and antibiotic tracking
+              </p>
+              
+              <div className="bg-black rounded-xl overflow-hidden shadow-2xl">
+                <video 
+                  controls 
+                  className="w-full h-auto"
+                  preload="auto"
+                  style={{ maxHeight: '500px' }}
+                >
+                  <source src={`${process.env.PUBLIC_URL}/demo-video.mp4`} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              
+              <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm text-blue-100">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  <span>Secure Platform</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  <span>Multi-Portal Access</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  <span>Real-time Updates</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Login Options */}
         <div className="max-w-6xl mx-auto">
           <h2 className="text-2xl font-bold text-center mb-8">Choose Your Portal</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Link
               to="/login/doctor"
               className="bg-white rounded-lg shadow-lg p-6 text-center transition duration-300 hover:shadow-xl hover:transform hover:-translate-y-1"
@@ -105,6 +146,19 @@ const HomePage: React.FC = () => {
               <h3 className="text-xl font-semibold text-primary-600 mb-2">Reports & Investigation</h3>
               <p className="text-gray-600">
                 Medical reports and lab results
+              </p>
+            </Link>
+
+            <Link
+              to="/customer-support"
+              className="bg-white rounded-lg shadow-lg p-6 text-center transition duration-300 hover:shadow-xl hover:transform hover:-translate-y-1"
+            >
+              <div className="flex justify-center mb-3">
+                <MessageCircle className="h-8 w-8 text-primary-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-primary-600 mb-2">Customer Support</h3>
+              <p className="text-gray-600">
+                24/7 help and assistance
               </p>
             </Link>
           </div>

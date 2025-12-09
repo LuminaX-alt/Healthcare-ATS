@@ -10,6 +10,8 @@ import AdminDashboard from './components/AdminDashboard';
 import PharmacistDashboard from './components/PharmacistDashboard';
 import PatientDashboard from './components/PatientDashboard';
 import ReportsDashboard from './components/ReportsDashboard';
+import PrescriptionTrackingDashboard from './components/PrescriptionTrackingDashboard';
+import CustomerSupport from './components/CustomerSupport';
 import ProtectedRoute from './components/ProtectedRoute';
 import PatientRegistration from './components/PatientRegistration';
 import LogoutTest from './components/LogoutTest';
@@ -51,6 +53,10 @@ const App = () => {
                 <ReportsDashboard />
               </ProtectedRoute>
             } />
+            <Route path="/tracking" element={
+              <PrescriptionTrackingDashboard />
+            } />
+            <Route path="/customer-support" element={<CustomerSupport />} />
           </Routes>
         </div>
       </Router>

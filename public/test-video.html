@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 40px;
+            background: #1a1a1a;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+        }
+        video {
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #2563eb;
+            margin-bottom: 20px;
+        }
+        .info {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .success {
+            color: #059669;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc2626;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Video Test - LuminaX-alt</h1>
+        
+        <video controls preload="auto" id="testVideo">
+            <source src="./demo-video.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        
+        <div class="info">
+            <h3>Video Info:</h3>
+            <p><strong>File:</strong> demo-video.mp4</p>
+            <p><strong>Path:</strong> /public/demo-video.mp4</p>
+            <p id="status">⏳ Checking video status...</p>
+        </div>
+    </div>
+    
+    <script>
+        const video = document.getElementById('testVideo');
+        const status = document.getElementById('status');
+        
+        video.addEventListener('loadedmetadata', function() {
+            const duration = Math.floor(video.duration);
+            const mins = Math.floor(duration / 60);
+            const secs = duration % 60;
+            status.innerHTML = `<span class="success">✅ Video loaded successfully!</span><br>Duration: ${mins}m ${secs}s`;
+        });
+        
+        video.addEventListener('error', function(e) {
+            status.innerHTML = `<span class="error">❌ Error loading video: ${e.target.error ? e.target.error.message : 'Unknown error'}</span>`;
+        });
+    </script>
+</body>
+</html>

@@ -62,8 +62,11 @@ const createDemoUsers = async () => {
         role: 'patient',
         profile: { 
           name: 'Jane Doe',
+          phone: '+1-555-0104',
           dateOfBirth: new Date('1990-01-01'),
-          gender: 'female'
+          age: 34,
+          gender: 'female',
+          bloodType: 'O+'
         }
       },
       {

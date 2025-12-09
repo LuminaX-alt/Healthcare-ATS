@@ -37,13 +37,24 @@ export interface OTPVerification {
 export interface Patient {
     id: string;
     phoneNumber: string;
+    phone?: string;
     name?: string;
     email?: string;
     age?: number;
     gender?: 'male' | 'female' | 'other' | 'not_specified';
     address?: string;
+    bloodType?: string;
     medicalHistory: string[];
     allergies: string[];
+    chronicConditions?: string[];
+    medications?: {
+      name: string;
+      dosage?: string;
+      frequency?: string;
+      startDate?: string;
+      endDate?: string;
+      prescribedBy?: string;
+    }[];
     profileComplete: boolean;
     cart: CartItem[];
     vitals?: PatientVitals;
@@ -70,7 +81,10 @@ export interface PatientVitals {
     temperature?: number; // in Celsius
     heartRate?: number; // bpm
     respiratoryRate?: number; // breaths per minute
-    lastUpdated?: string; // e.g., '2025-10-10'
+    oxygenSaturation?: number; // SpO2 percentage
+    bloodSugar?: number; // mg/dL
+    bmi?: number;
+    lastUpdated?: string; // ISO date string from API
 }
 
 export interface TimelineEvent {
