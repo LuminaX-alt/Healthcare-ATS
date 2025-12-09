@@ -216,8 +216,7 @@ brew services restart mongodb-community
 
 ### AI Assistant Not Working
 1. Verify `GEMINI_API_KEY` in `server/.env`
-2. Check API key is valid at [Google AI Studio](https://makersuite.google.com/app/apikey)
-3. Test connection: `node test-gemini-api.js`
+2. Test connection: `node test-gemini-api.js`
 
 ## 📚 API Documentation
 
